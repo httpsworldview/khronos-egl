@@ -37,14 +37,16 @@
 //!   // The `egl::Static` API implementation is only available when the `static` feature is enabled.
 //!   let egl = egl::Instance::new(egl::Static);
 //!
-//!   let wayland_display = wayland_client::Display::connect_to_env().expect("unable to connect to the wayland server");
-//!   let display = unsafe { egl.get_display(wayland_display.get_display_ptr() as *mut std::ffi::c_void) }.unwrap();
+//!   let wayland_display = wayland_client::Connection::connect_to_env().expect("unable to connect to the wayland server");
+//!   let display = unsafe { egl.get_display(wayland_display.backend().display_ptr().cast()) }.unwrap();
 //!   egl.initialize(display)?;
+//!   egl.bind_api(egl::OPENGL_API)?;
 //!
 //!   let attributes = [
 //!     egl::RED_SIZE, 8,
 //!     egl::GREEN_SIZE, 8,
 //!     egl::BLUE_SIZE, 8,
+//!     egl::RENDERABLE_TYPE, egl::OPENGL_BIT,
 //!     egl::NONE
 //!   ];
 //!
@@ -68,7 +70,8 @@
 //! The creation of a `Display` instance is not detailed here since it depends on your display server.
 //! It is created using the `get_display` function with a pointer to the display server connection handle.
 //! For instance, if you are using the [wayland-client](https://crates.io/crates/wayland-client) crate,
-//! you can get this pointer using the `Display::get_display_ptr` method.
+//! you can get this pointer using `Connection::backend().display_ptr()` with its
+//! `system` feature enabled.
 //!
 //! #### Static API Instance
 //!
@@ -595,8 +598,8 @@ mod egl1_0 {
         /// # #[cfg(feature = "static")]
         /// # fn main() -> Result<(), egl::Error> {
         /// # let egl = egl::Instance::new(egl::Static);
-        /// # let wayland_display = wayland_client::Display::connect_to_env().expect("unable to connect to the wayland server");
-        /// # let display = unsafe { egl.get_display(wayland_display.get_display_ptr() as *mut std::ffi::c_void) }.unwrap();
+        /// # let wayland_display = wayland_client::Connection::connect_to_env().expect("unable to connect to the wayland server");
+        /// # let display = unsafe { egl.get_display(wayland_display.backend().display_ptr().cast()) }.unwrap();
         /// # egl.initialize(display)?;
         /// # let attrib_list = [egl::RED_SIZE, 8, egl::GREEN_SIZE, 8, egl::BLUE_SIZE, 8, egl::NONE];
         /// // Get the number of matching configurations.
@@ -658,8 +661,8 @@ mod egl1_0 {
         /// # #[cfg(feature = "static")]
         /// # fn main() -> Result<(), egl::Error> {
         /// # let egl = egl::Instance::new(egl::Static);
-        /// # let wayland_display = wayland_client::Display::connect_to_env().expect("unable to connect to the wayland server");
-        /// # let display = unsafe { egl.get_display(wayland_display.get_display_ptr() as *mut std::ffi::c_void) }.unwrap();
+        /// # let wayland_display = wayland_client::Connection::connect_to_env().expect("unable to connect to the wayland server");
+        /// # let display = unsafe { egl.get_display(wayland_display.backend().display_ptr().cast()) }.unwrap();
         /// # egl.initialize(display)?;
         /// # let attrib_list = [egl::RED_SIZE, 8, egl::GREEN_SIZE, 8, egl::BLUE_SIZE, 8, egl::NONE];
         /// let mut configs = Vec::with_capacity(1);
@@ -892,8 +895,8 @@ mod egl1_0 {
         /// # #[cfg(feature = "static")]
         /// # fn main() -> Result<(), egl::Error> {
         /// # let egl = egl::Instance::new(egl::Static);
-        /// # let wayland_display = wayland_client::Display::connect_to_env().expect("unable to connect to the wayland server");
-        /// # let display = unsafe { egl.get_display(wayland_display.get_display_ptr() as *mut std::ffi::c_void) }.unwrap();
+        /// # let wayland_display = wayland_client::Connection::connect_to_env().expect("unable to connect to the wayland server");
+        /// # let display = unsafe { egl.get_display(wayland_display.backend().display_ptr().cast()) }.unwrap();
         /// # egl.initialize(display)?;
         /// let mut configs = Vec::with_capacity(egl.get_config_count(display)?);
         /// egl.get_configs(display, &mut configs)?;
@@ -931,8 +934,8 @@ mod egl1_0 {
         /// # #[cfg(feature = "static")]
         /// # fn main() -> Result<(), egl::Error> {
         /// # let egl = egl::Instance::new(egl::Static);
-        /// # let wayland_display = wayland_client::Display::connect_to_env().expect("unable to connect to the wayland server");
-        /// # let display = unsafe { egl.get_display(wayland_display.get_display_ptr() as *mut std::ffi::c_void) }.unwrap();
+        /// # let wayland_display = wayland_client::Connection::connect_to_env().expect("unable to connect to the wayland server");
+        /// # let display = unsafe { egl.get_display(wayland_display.backend().display_ptr().cast()) }.unwrap();
         /// # egl.initialize(display)?;
         /// let mut configs = Vec::with_capacity(egl.get_config_count(display)?);
         /// egl.get_configs(display, &mut configs)?;

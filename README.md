@@ -46,14 +46,16 @@ fn main() -> Result<(), egl::Error> {
 	// The `egl::Static` API implementation is only available when the `static` feature is enabled.
 	let egl = egl::Instance::new(egl::Static);
 
-	let wayland_display = wayland_client::Display::connect_to_env().expect("unable to connect to the wayland server");
-	let display = unsafe { egl.get_display(wayland_display.get_display_ptr() as *mut std::ffi::c_void) }.unwrap();
+	let wayland_display = wayland_client::Connection::connect_to_env().expect("unable to connect to the wayland server");
+	let display = unsafe { egl.get_display(wayland_display.backend().display_ptr().cast()) }.unwrap();
 	egl.initialize(display)?;
+	egl.bind_api(egl::OPENGL_API)?;
 
 	let attributes = [
 		egl::RED_SIZE, 8,
 		egl::GREEN_SIZE, 8,
 		egl::BLUE_SIZE, 8,
+		egl::RENDERABLE_TYPE, egl::OPENGL_BIT,
 		egl::NONE
 	];
 
@@ -77,7 +79,8 @@ depends on your display server.  It is created using the `get_display`
 function with a pointer to the display server connection handle.  For
 instance, if you are using the
 [wayland-client](https://crates.io/crates/wayland-client) crate, you
-can get this pointer using the `Display::get_display_ptr` method.
+can get this pointer using `Connection::backend().display_ptr()` with its
+`system` feature enabled.
 
 #### Static API Instance
 
