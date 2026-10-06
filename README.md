@@ -8,121 +8,25 @@ This repository is a fork of
 [timothee-haudebourg/khronos-egl](https://github.com/timothee-haudebourg/khronos-egl),
 which I plan on maintaining independently.
 
-If you want to use this library, see [CHANGELOG.md](CHANGELOG.md) for
-changes.
+If you want to use this library, see [CHANGELOG.md](CHANGELOG.md) and
+refer to source level documentation.
 
 ## Usage
 
-You can access the EGL API using an
-[`Instance`](https://docs.rs/khronos-egl/latest/khronos-egl/struct.Instance.html)
-object defined by either statically linking with `libEGL.so.1` at
-compile time, or dynamically loading the EGL library at runtime.
+Enable `static` for link-time EGL binding or `dynamic` for runtime
+loading. See the [crate-level guide](src/lib.rs) for setup, version
+selection, examples, and troubleshooting.
 
-### Static linking
+To read the rendered guide locally:
 
-You must enable static linking using the `static` feature in your `Cargo.toml`:
-```toml
-khronos-egl = { version = ..., features = ["static"] }
+```sh
+cargo doc --no-deps --features "static dynamic" --open
 ```
 
-This will add a dependency to the
-[`pkg-config`](https://crates.io/crates/pkg-config) crate, necessary
-to find the EGL library at compile time.
-
-If you wish to disable linking EGL in this crate, and provide linking in
-your crate instead, enable the `no-pkg-config` feature.
-```toml
-khronos-egl = {version = ..., features = ["static", "no-pkg-config"]}
-```
-
-Here is a simple example showing how to use this library to create an
-EGL context when static linking is enabled.
-
-```rust
-extern crate khronos_egl as egl;
-
-fn main() -> Result<(), egl::Error> {
-	// Create an EGL API instance.
-	// The `egl::Static` API implementation is only available when the `static` feature is enabled.
-	let egl = egl::Instance::new(egl::Static);
-
-	let wayland_display = wayland_client::Connection::connect_to_env().expect("unable to connect to the wayland server");
-	let display = unsafe { egl.get_display(wayland_display.backend().display_ptr().cast()) }.unwrap();
-	egl.initialize(display)?;
-	egl.bind_api(egl::OPENGL_API)?;
-
-	let attributes = [
-		egl::RED_SIZE, 8,
-		egl::GREEN_SIZE, 8,
-		egl::BLUE_SIZE, 8,
-		egl::RENDERABLE_TYPE, egl::OPENGL_BIT,
-		egl::NONE
-	];
-
-	let config = egl.choose_first_config(display, &attributes)?.expect("unable to find an appropriate ELG configuration");
-
-	let context_attributes = [
-		egl::CONTEXT_MAJOR_VERSION, 4,
-		egl::CONTEXT_MINOR_VERSION, 0,
-		egl::CONTEXT_OPENGL_PROFILE_MASK, egl::CONTEXT_OPENGL_CORE_PROFILE_BIT,
-		egl::NONE
-	];
-
-	egl.create_context(display, config, None, &context_attributes)?;
-
-	Ok(())
-}
-```
-
-The creation of a `Display` instance is not detailed here since it
-depends on your display server.  It is created using the `get_display`
-function with a pointer to the display server connection handle.  For
-instance, if you are using the
-[wayland-client](https://crates.io/crates/wayland-client) crate, you
-can get this pointer using `Connection::backend().display_ptr()` with its
-`system` feature enabled.
-
-#### Static API Instance
-
-With the `static` feature, `API` provides a global instance on stable
-Rust.  You can also define your own static instance using
-`Instance::new`.
-
-```rust
-use khronos_egl::API as egl;
-```
-
-### Dynamic Linking
-
-Dynamic linking allows your application to accept multiple versions of EGL and be more flexible.
-You must enable dynamic linking using the `dynamic` feature in your `Cargo.toml`:
-```toml
-khronos-egl = { version = ..., features = ["dynamic"] }
-```
-
-This will add a dependency to the
-[`libloading`](https://crates.io/crates/libloading) crate, necessary
-to find the EGL library at runtime.  You can then load the EGL API
-into a `Instance<Dynamic<libloading::Library>>` as follows:
-
-```rust
-let lib = unsafe { libloading::Library::new("libEGL.so.1") }.expect("unable to find libEGL.so.1");
-let egl = unsafe { egl::DynamicInstance::<egl::EGL1_4>::load_required_from(lib) }.expect("unable to load libEGL.so.1");
-```
-
-Here, `egl::EGL1_4` is used to specify what is the minimum required version of EGL that must be provided by `libEGL.so.1`.
-This will return a `DynamicInstance<egl::EGL1_4>`, however in that case where `libEGL.so.1` provides a more recent version of EGL,
-you can still upcast ths instance to provide version specific features:
-```rust
-match egl.upcast::<egl::EGL1_5>() {
-	Some(egl1_5) => {
-		// do something with EGL 1.5
-	}
-	None => {
-		// do something with EGL 1.4 instead.
-	}
-};
-```
+Runnable examples:
+- [Static Wayland application](examples/wayland-static.rs)
+- [Dynamic Wayland application](examples/wayland-dynamic.rs)
+- [Minimal dynamic loading and version selection](examples/load-minimal.rs)
 
 ### NixOS
 
@@ -146,22 +50,6 @@ cargo run --example load-minimal --no-default-features --features "dynamic 1_4"
 
 Doctests that need a running Wayland compositor are compiled but not
 executed.  The Wayland examples require a compositor to run.
-
-## Troubleshooting
-
-### Static Linking with OpenGL ES
-
-When using OpenGL ES with `khronos-egl` with the `static` feature, it
-is necessary to place a dummy extern at the top of your application
-which links libEGL first, then GLESv1/2.  This is because libEGL
-provides symbols required by GLESv1/2.  Here's how to work around
-this:
-
-```rust
-#[link(name = "EGL")]
-#[link(name = "GLESv2")]
-extern {}
-```
 
 ## License
 

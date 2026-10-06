@@ -10,8 +10,8 @@
 //! ## Usage
 //!
 //! You can access the EGL API using an [`Instance`] object defined by
-//! either statically linking with `libEGL.so.1` at compile time, or
-//! dynamically loading the EGL library at runtime.
+//! either linking with EGL at build time, loading the EGL library at
+//! runtime, or both.
 //!
 //! ### Static linking
 //!
@@ -19,14 +19,22 @@
 //! `Cargo.toml`:
 //!
 //! ```toml
-//! khronos-egl = { version = ..., features = ["static"] }
+//! khronos-egl = { git = "https://github.com/httpsworldview/khronos-egl", features = ["static"] }
 //! ```
 //!
 //! This will add a dependency to the
 //! [`pkg-config`](https://crates.io/crates/pkg-config) crate,
-//! necessary to find the EGL library at compile time.  Here is a
-//! simple example showing how to use this library to create an EGL
-//! context when static linking is enabled.
+//! necessary to find the EGL library at build time. The `static`
+//! feature selects link-time binding, not necessarily a static
+//! library archive. To supply the linker configuration yourself
+//! instead of using `pkg-config`, also enable `no-pkg-config`:
+//!
+//! ```toml
+//! khronos-egl = { git = "https://github.com/httpsworldview/khronos-egl", features = ["static", "no-pkg-config"] }
+//! ```
+//!
+//! Here is an example creating an EGL context. It also requires
+//! `wayland-client` 0.31 with its `system` feature enabled.
 //!
 //! ```no_run
 //! use khronos_egl as egl;
@@ -50,7 +58,7 @@
 //!     egl::NONE
 //!   ];
 //!
-//!   let config = egl.choose_first_config(display, &attributes)?.expect("unable to find an appropriate ELG configuration");
+//!   let config = egl.choose_first_config(display, &attributes)?.expect("unable to find an appropriate EGL configuration");
 //!
 //!   let context_attributes = [
 //!     egl::CONTEXT_MAJOR_VERSION, 4,
@@ -67,11 +75,10 @@
 //! # fn main() {}
 //! ```
 //!
-//! The creation of a `Display` instance is not detailed here since it depends on your display server.
-//! It is created using the `get_display` function with a pointer to the display server connection handle.
-//! For instance, if you are using the [wayland-client](https://crates.io/crates/wayland-client) crate,
-//! you can get this pointer using `Connection::backend().display_ptr()` with its
-//! `system` feature enabled.
+//! Display creation depends on the window system. The example above
+//! passes the Wayland connection handle from
+//! `Connection::backend().display_ptr()` to
+//! [`Instance::get_display`].
 //!
 //! #### Static API Instance
 //!
@@ -88,12 +95,13 @@
 //! Dynamic linking allows your application to accept multiple versions of EGL and be more flexible.
 //! You must enable dynamic linking using the `dynamic` feature in your `Cargo.toml`:
 //! ```toml
-//! khronos-egl = { version = ..., features = ["dynamic"] }
+//! khronos-egl = { git = "https://github.com/httpsworldview/khronos-egl", features = ["dynamic"] }
 //! ```
 //!
-//! This will add a dependency to the [`libloading`](https://crates.io/crates/libloading) crate,
-//! necessary to find the EGL library at runtime.
-//! You can then load the EGL API into a `Instance<Dynamic<libloading::Library>>` as follows:
+//! This will add a dependency to the
+//! [`libloading`](https://crates.io/crates/libloading) crate,
+//! necessary to find the EGL library at runtime.  You can then load
+//! the EGL API into a `DynamicInstance<EGL1_4>` like so:
 //!
 //! ```
 //! # use khronos_egl as egl;
@@ -104,9 +112,14 @@
 //! # }
 //! ```
 //!
-//! Here, `egl::EGL1_4` is used to specify what is the minimum required version of EGL that must be provided by `libEGL.so.1`.
-//! This will return a `DynamicInstance<egl::EGL1_4>`, however in that case where `libEGL.so.1` provides a more recent version of EGL,
-//! you can still upcast ths instance to provide version specific features:
+//! Here, `egl::EGL1_4` is used to specify what is the minimum
+//! required version of EGL that must be provided by `libEGL.so.1`.
+//! If the library also provides a newer API enabled by the crate's
+//! version features, you can upcast the instance to access it. The
+//! default feature enables EGL 1.5; disable default features and
+//! select a lower version feature such as `1_4` to restrict the
+//! compiled API surface.
+//!
 //! ```
 //! # use khronos_egl as egl;
 //! # #[cfg(all(feature = "dynamic", feature = "1_5"))]
@@ -129,9 +142,10 @@
 //! ### Static Linking with OpenGL ES
 //!
 //! When using OpenGL ES with `khronos-egl` with the `static` feature,
-//! it is necessary to place a dummy extern at the top of your application which links libEGL first, then GLESv1/2.
-//! This is because libEGL provides symbols required by GLESv1/2.
-//! Here's how to work around this:
+//! it is necessary to place a dummy extern at the top of your
+//! application which links libEGL first, then GLESv1/2.  This is
+//! because libEGL provides symbols required by GLESv1/2.  Here's how
+//! to work around this:
 //!
 //! ```
 //! ##[link(name = "EGL")]
@@ -214,6 +228,12 @@ impl<T> Instance<T> {
     pub const fn new(api: T) -> Instance<T> {
         Instance { api }
     }
+
+    #[cfg(all(feature = "dynamic", feature = "1_1"))]
+    fn from_ref(api: &T) -> &Self {
+        // Instance is a transparent wrapper with no additional invariants.
+        unsafe { &*ptr::from_ref(api).cast() }
+    }
 }
 
 impl<T: fmt::Debug> fmt::Debug for Instance<T> {
@@ -230,13 +250,82 @@ impl<T> From<T> for Instance<T> {
     }
 }
 
+#[cfg(feature = "1_0")]
+impl<T: api::EGL1_0> Instance<T> {
+    fn check_success(&self, success: bool) -> Result<(), Error> {
+        if success {
+            Ok(())
+        } else {
+            Err(self
+                .get_error()
+                .expect("EGL operation failed without setting an error"))
+        }
+    }
+}
+
+/// Query a configuration count, or fill an output vector when supplied.
+///
+/// # Safety
+///
+/// `query` must not retain the output pointers. On success, it must report a
+/// nonnegative count and, for a non-null buffer, initialize that many valid
+/// EGLConfig handles without exceeding the supplied capacity.
+#[cfg(feature = "1_0")]
+unsafe fn query_configs(
+    mut configs: Option<&mut Vec<Config>>,
+    query: impl FnOnce(*mut EGLConfig, Int, *mut Int) -> Result<(), Error>,
+) -> Result<usize, Error> {
+    let (buffer, capacity) = match configs.as_mut() {
+        // A zero-capacity output buffer is a no-op, not a count query.
+        Some(configs) if configs.capacity() == 0 => return Ok(0),
+        Some(configs) => (
+            configs.as_mut_ptr().cast(),
+            configs.capacity().try_into().unwrap(),
+        ),
+        None => (ptr::null_mut(), 0),
+    };
+    let mut count = 0;
+    query(buffer, capacity, &raw mut count)?;
+    let count = usize::try_from(count).expect("EGL returned a negative configuration count");
+    if let Some(configs) = configs {
+        // Config is transparent over EGLConfig; query initialized count entries.
+        configs.set_len(count);
+    }
+    Ok(count)
+}
+
+#[cfg(feature = "dynamic")]
+unsafe fn open_library(
+    filename: &std::ffi::OsStr,
+) -> Result<libloading::Library, libloading::Error> {
+    #[cfg(target_os = "linux")]
+    {
+        // Keep EGL loaded to avoid driver teardown crashes; see upstream issue #14.
+        const RTLD_NODELETE: std::ffi::c_int = 0x1000;
+        libloading::os::unix::Library::open(
+            Some(filename),
+            libloading::os::unix::RTLD_NOW | RTLD_NODELETE,
+        )
+        .map(Into::into)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        libloading::Library::new(filename)
+    }
+}
+
+#[cfg(feature = "dynamic")]
+fn load_default<T, E>(mut load: impl FnMut(&str) -> Result<T, E>) -> Result<T, E> {
+    load("libEGL.so.1").or_else(|_| load("libEGL.so"))
+}
+
 // ------------------------------------------------------------------------------------------------
 // EGL 1.0
 // ------------------------------------------------------------------------------------------------
 
 #[cfg(feature = "1_0")]
 mod egl1_0 {
-    use super::{api, c_uint, c_void, fmt, ptr, CStr, CString, Instance};
+    use super::{api, c_uint, c_void, fmt, ptr, query_configs, CStr, CString, Instance};
 
     pub type Boolean = c_uint;
     pub type Int = i32;
@@ -370,7 +459,7 @@ mod egl1_0 {
     pub const NATIVE_VISUAL_ID: Int = 0x302E;
     pub const NATIVE_VISUAL_TYPE: Int = 0x302F;
     pub const NONE: Int = 0x3038;
-    pub const ATTRIB_NONE: Attrib = 0x3038;
+    pub const ATTRIB_NONE: Attrib = NONE as Attrib;
     pub const NON_CONFORMANT_CONFIG: Int = 0x3051;
     pub const NOT_INITIALIZED: Int = 0x3001;
     pub const NO_CONTEXT: EGLContext = 0 as EGLContext;
@@ -534,19 +623,11 @@ mod egl1_0 {
         }
     }
 
-    pub fn check_int_list(attrib_list: &[Int]) -> Result<(), Error> {
-        if attrib_list.iter().step_by(2).any(|&attrib| attrib == NONE) {
-            Ok(())
-        } else {
-            Err(Error::BadParameter)
-        }
-    }
-
-    pub fn check_attrib_list(attrib_list: &[Attrib]) -> Result<(), Error> {
+    fn check_list<T: PartialEq>(attrib_list: &[T], terminator: T) -> Result<(), Error> {
         if attrib_list
             .iter()
             .step_by(2)
-            .any(|&attrib| attrib == ATTRIB_NONE)
+            .any(|attrib| *attrib == terminator)
         {
             Ok(())
         } else {
@@ -554,11 +635,21 @@ mod egl1_0 {
         }
     }
 
+    /// Check for `NONE` in an attribute position; values and trailing data are ignored.
+    pub fn check_int_list(attrib_list: &[Int]) -> Result<(), Error> {
+        check_list(attrib_list, NONE)
+    }
+
+    /// Check for `ATTRIB_NONE` in an attribute position; values and trailing data are ignored.
+    pub fn check_attrib_list(attrib_list: &[Attrib]) -> Result<(), Error> {
+        check_list(attrib_list, ATTRIB_NONE)
+    }
+
     impl<T: api::EGL1_0> Instance<T> {
-        /// Return the number of EGL frame buffer configurations that atch specified
+        /// Return the number of EGL frame buffer configurations that match specified
         /// attributes.
         ///
-        /// This will call `eglChooseConfig` without `null` as `configs` to get the
+        /// This will call `eglChooseConfig` with `null` as `configs` to get the
         /// number of matching configurations.
         ///
         /// This will return a `BadParameter` error if `attrib_list` is not a valid
@@ -570,23 +661,17 @@ mod egl1_0 {
         ) -> Result<usize, Error> {
             check_int_list(attrib_list)?;
             unsafe {
-                let mut count = 0;
-
-                if self.api.eglChooseConfig(
-                    display.as_ptr(),
-                    attrib_list.as_ptr(),
-                    ptr::null_mut(),
-                    0,
-                    &raw mut count,
-                ) == TRUE
-                {
-                    Ok(
-                        usize::try_from(count)
-                            .expect("EGL returned a negative configuration count"),
+                query_configs(None, |configs, capacity, count| {
+                    self.check_success(
+                        self.api.eglChooseConfig(
+                            display.as_ptr(),
+                            attrib_list.as_ptr(),
+                            configs,
+                            capacity,
+                            count,
+                        ) == TRUE,
                     )
-                } else {
-                    Err(self.get_error().unwrap())
-                }
+                })
             }
         }
 
@@ -630,34 +715,20 @@ mod egl1_0 {
         ) -> Result<(), Error> {
             check_int_list(attrib_list)?;
 
-            let capacity = configs.capacity();
-            if capacity == 0 {
-                // When the input ptr is null (when capacity is 0),
-                // eglChooseConfig behaves differently and returns the number
-                // of configurations.
-                Ok(())
-            } else {
-                unsafe {
-                    let mut count = 0;
-
-                    if self.api.eglChooseConfig(
-                        display.as_ptr(),
-                        attrib_list.as_ptr(),
-                        configs.as_mut_ptr().cast(),
-                        capacity.try_into().unwrap(),
-                        &raw mut count,
-                    ) == TRUE
-                    {
-                        configs.set_len(
-                            usize::try_from(count)
-                                .expect("EGL returned a negative configuration count"),
-                        );
-                        Ok(())
-                    } else {
-                        Err(self.get_error().unwrap())
-                    }
-                }
+            unsafe {
+                query_configs(Some(configs), |configs, capacity, count| {
+                    self.check_success(
+                        self.api.eglChooseConfig(
+                            display.as_ptr(),
+                            attrib_list.as_ptr(),
+                            configs,
+                            capacity,
+                            count,
+                        ) == TRUE,
+                    )
+                })?;
             }
+            Ok(())
         }
 
         /// Return the first EGL frame buffer configuration that match specified
@@ -705,15 +776,11 @@ mod egl1_0 {
             target: NativePixmapType,
         ) -> Result<(), Error> {
             unsafe {
-                if self
-                    .api
-                    .eglCopyBuffers(display.as_ptr(), surface.as_ptr(), target)
-                    == TRUE
-                {
-                    Ok(())
-                } else {
-                    Err(self.get_error().unwrap())
-                }
+                self.check_success(
+                    self.api
+                        .eglCopyBuffers(display.as_ptr(), surface.as_ptr(), target)
+                        == TRUE,
+                )
             }
         }
 
@@ -742,11 +809,8 @@ mod egl1_0 {
                     attrib_list.as_ptr(),
                 );
 
-                if context == NO_CONTEXT {
-                    Err(self.get_error().unwrap())
-                } else {
-                    Ok(Context(context))
-                }
+                self.check_success(context != NO_CONTEXT)?;
+                Ok(Context(context))
             }
         }
 
@@ -768,11 +832,8 @@ mod egl1_0 {
                     attrib_list.as_ptr(),
                 );
 
-                if surface == NO_SURFACE {
-                    Err(self.get_error().unwrap())
-                } else {
-                    Ok(Surface(surface))
-                }
+                self.check_success(surface != NO_SURFACE)?;
+                Ok(Surface(surface))
             }
         }
 
@@ -799,12 +860,8 @@ mod egl1_0 {
                 pixmap,
                 attrib_list.as_ptr(),
             );
-
-            if surface == NO_SURFACE {
-                Err(self.get_error().unwrap())
-            } else {
-                Ok(Surface(surface))
-            }
+            self.check_success(surface != NO_SURFACE)?;
+            Ok(Surface(surface))
         }
 
         /// Create a new EGL window surface.
@@ -837,37 +894,27 @@ mod egl1_0 {
                 window,
                 attrib_list,
             );
-
-            if surface == NO_SURFACE {
-                Err(self.get_error().unwrap())
-            } else {
-                Ok(Surface(surface))
-            }
+            self.check_success(surface != NO_SURFACE)?;
+            Ok(Surface(surface))
         }
 
         /// Destroy an EGL rendering context.
         pub fn destroy_context(&self, display: Display, ctx: Context) -> Result<(), Error> {
             unsafe {
-                if self.api.eglDestroyContext(display.as_ptr(), ctx.as_ptr()) == TRUE {
-                    Ok(())
-                } else {
-                    Err(self.get_error().unwrap())
-                }
+                self.check_success(
+                    self.api.eglDestroyContext(display.as_ptr(), ctx.as_ptr()) == TRUE,
+                )
             }
         }
 
         /// Destroy an EGL surface.
         pub fn destroy_surface(&self, display: Display, surface: Surface) -> Result<(), Error> {
             unsafe {
-                if self
-                    .api
-                    .eglDestroySurface(display.as_ptr(), surface.as_ptr())
-                    == TRUE
-                {
-                    Ok(())
-                } else {
-                    Err(self.get_error().unwrap())
-                }
+                self.check_success(
+                    self.api
+                        .eglDestroySurface(display.as_ptr(), surface.as_ptr())
+                        == TRUE,
+                )
             }
         }
 
@@ -880,17 +927,15 @@ mod egl1_0 {
         ) -> Result<Int, Error> {
             unsafe {
                 let mut value: Int = 0;
-                if self.api.eglGetConfigAttrib(
-                    display.as_ptr(),
-                    config.as_ptr(),
-                    attribute,
-                    &raw mut value,
-                ) == TRUE
-                {
-                    Ok(value)
-                } else {
-                    Err(self.get_error().unwrap())
-                }
+                self.check_success(
+                    self.api.eglGetConfigAttrib(
+                        display.as_ptr(),
+                        config.as_ptr(),
+                        attribute,
+                        &raw mut value,
+                    ) == TRUE,
+                )?;
+                Ok(value)
             }
         }
 
@@ -917,26 +962,19 @@ mod egl1_0 {
         /// ```
         pub fn get_config_count(&self, display: Display) -> Result<usize, Error> {
             unsafe {
-                let mut count = 0;
-
-                if self
-                    .api
-                    .eglGetConfigs(display.as_ptr(), ptr::null_mut(), 0, &raw mut count)
-                    == TRUE
-                {
-                    Ok(
-                        usize::try_from(count)
-                            .expect("EGL returned a negative configuration count"),
+                query_configs(None, |configs, capacity, count| {
+                    self.check_success(
+                        self.api
+                            .eglGetConfigs(display.as_ptr(), configs, capacity, count)
+                            == TRUE,
                     )
-                } else {
-                    Err(self.get_error().unwrap())
-                }
+                })
             }
         }
 
         /// Get the list of all EGL frame buffer configurations for a display.
         ///
-        /// The configurations are added to the `configs` buffer, up to the buffer's capacity.
+        /// The configurations replace the contents of `configs`, up to its capacity.
         /// You can use [`get_config_count`](Self::get_config_count) to get the total number of available frame buffer configurations,
         /// and setup the buffer's capacity accordingly.
         ///
@@ -961,33 +999,16 @@ mod egl1_0 {
             display: Display,
             configs: &mut Vec<Config>,
         ) -> Result<(), Error> {
-            let capacity = configs.capacity();
-            if capacity == 0 {
-                // When the input ptr is null (when capacity is 0),
-                // eglGetConfig behaves differently and returns the number
-                // of configurations.
-                Ok(())
-            } else {
-                unsafe {
-                    let mut count = 0;
-
-                    if self.api.eglGetConfigs(
-                        display.as_ptr(),
-                        configs.as_mut_ptr().cast(),
-                        capacity.try_into().unwrap(),
-                        &raw mut count,
-                    ) == TRUE
-                    {
-                        configs.set_len(
-                            usize::try_from(count)
-                                .expect("EGL returned a negative configuration count"),
-                        );
-                        Ok(())
-                    } else {
-                        Err(self.get_error().unwrap())
-                    }
-                }
+            unsafe {
+                query_configs(Some(configs), |configs, capacity, count| {
+                    self.check_success(
+                        self.api
+                            .eglGetConfigs(display.as_ptr(), configs, capacity, count)
+                            == TRUE,
+                    )
+                })?;
             }
+            Ok(())
         }
 
         /// Return the display for the current EGL rendering context.
@@ -1073,15 +1094,12 @@ mod egl1_0 {
                 let mut major = 0;
                 let mut minor = 0;
 
-                if self
-                    .api
-                    .eglInitialize(display.as_ptr(), &raw mut major, &raw mut minor)
-                    == TRUE
-                {
-                    Ok((major, minor))
-                } else {
-                    Err(self.get_error().unwrap())
-                }
+                self.check_success(
+                    self.api
+                        .eglInitialize(display.as_ptr(), &raw mut major, &raw mut minor)
+                        == TRUE,
+                )?;
+                Ok((major, minor))
             }
         }
 
@@ -1107,11 +1125,9 @@ mod egl1_0 {
                     None => NO_CONTEXT,
                 };
 
-                if self.api.eglMakeCurrent(display.as_ptr(), draw, read, ctx) == TRUE {
-                    Ok(())
-                } else {
-                    Err(self.get_error().unwrap())
-                }
+                self.check_success(
+                    self.api.eglMakeCurrent(display.as_ptr(), draw, read, ctx) == TRUE,
+                )
             }
         }
 
@@ -1124,17 +1140,15 @@ mod egl1_0 {
         ) -> Result<Int, Error> {
             unsafe {
                 let mut value = 0;
-                if self.api.eglQueryContext(
-                    display.as_ptr(),
-                    ctx.as_ptr(),
-                    attribute,
-                    &raw mut value,
-                ) == TRUE
-                {
-                    Ok(value)
-                } else {
-                    Err(self.get_error().unwrap())
-                }
+                self.check_success(
+                    self.api.eglQueryContext(
+                        display.as_ptr(),
+                        ctx.as_ptr(),
+                        attribute,
+                        &raw mut value,
+                    ) == TRUE,
+                )?;
+                Ok(value)
             }
         }
 
@@ -1153,11 +1167,8 @@ mod egl1_0 {
 
                 let c_str = self.api.eglQueryString(display_ptr, name);
 
-                if c_str.is_null() {
-                    Err(self.get_error().unwrap())
-                } else {
-                    Ok(CStr::from_ptr(c_str))
-                }
+                self.check_success(!c_str.is_null())?;
+                Ok(CStr::from_ptr(c_str))
             }
         }
 
@@ -1170,62 +1181,40 @@ mod egl1_0 {
         ) -> Result<Int, Error> {
             unsafe {
                 let mut value = 0;
-                if self.api.eglQuerySurface(
-                    display.as_ptr(),
-                    surface.as_ptr(),
-                    attribute,
-                    &raw mut value,
-                ) == TRUE
-                {
-                    Ok(value)
-                } else {
-                    Err(self.get_error().unwrap())
-                }
+                self.check_success(
+                    self.api.eglQuerySurface(
+                        display.as_ptr(),
+                        surface.as_ptr(),
+                        attribute,
+                        &raw mut value,
+                    ) == TRUE,
+                )?;
+                Ok(value)
             }
         }
 
         /// Post EGL surface color buffer to a native window.
         pub fn swap_buffers(&self, display: Display, surface: Surface) -> Result<(), Error> {
             unsafe {
-                if self.api.eglSwapBuffers(display.as_ptr(), surface.as_ptr()) == TRUE {
-                    Ok(())
-                } else {
-                    Err(self.get_error().unwrap())
-                }
+                self.check_success(
+                    self.api.eglSwapBuffers(display.as_ptr(), surface.as_ptr()) == TRUE,
+                )
             }
         }
 
         /// Terminate an EGL display connection.
         pub fn terminate(&self, display: Display) -> Result<(), Error> {
-            unsafe {
-                if self.api.eglTerminate(display.as_ptr()) == TRUE {
-                    Ok(())
-                } else {
-                    Err(self.get_error().unwrap())
-                }
-            }
+            unsafe { self.check_success(self.api.eglTerminate(display.as_ptr()) == TRUE) }
         }
 
         /// Complete GL execution prior to subsequent native rendering calls.
         pub fn wait_gl(&self) -> Result<(), Error> {
-            unsafe {
-                if self.api.eglWaitGL() == TRUE {
-                    Ok(())
-                } else {
-                    Err(self.get_error().unwrap())
-                }
-            }
+            unsafe { self.check_success(self.api.eglWaitGL() == TRUE) }
         }
 
         /// Complete native execution prior to subsequent GL rendering calls.
         pub fn wait_native(&self, engine: Int) -> Result<(), Error> {
-            unsafe {
-                if self.api.eglWaitNative(engine) == TRUE {
-                    Ok(())
-                } else {
-                    Err(self.get_error().unwrap())
-                }
-            }
+            unsafe { self.check_success(self.api.eglWaitNative(engine) == TRUE) }
         }
     }
 }
@@ -1264,15 +1253,11 @@ mod egl1_1 {
             buffer: Int,
         ) -> Result<(), Error> {
             unsafe {
-                if self
-                    .api
-                    .eglBindTexImage(display.as_ptr(), surface.as_ptr(), buffer)
-                    == TRUE
-                {
-                    Ok(())
-                } else {
-                    Err(self.get_error().unwrap())
-                }
+                self.check_success(
+                    self.api
+                        .eglBindTexImage(display.as_ptr(), surface.as_ptr(), buffer)
+                        == TRUE,
+                )
             }
         }
 
@@ -1284,15 +1269,11 @@ mod egl1_1 {
             buffer: Int,
         ) -> Result<(), Error> {
             unsafe {
-                if self
-                    .api
-                    .eglReleaseTexImage(display.as_ptr(), surface.as_ptr(), buffer)
-                    == TRUE
-                {
-                    Ok(())
-                } else {
-                    Err(self.get_error().unwrap())
-                }
+                self.check_success(
+                    self.api
+                        .eglReleaseTexImage(display.as_ptr(), surface.as_ptr(), buffer)
+                        == TRUE,
+                )
             }
         }
 
@@ -1305,15 +1286,11 @@ mod egl1_1 {
             value: Int,
         ) -> Result<(), Error> {
             unsafe {
-                if self
-                    .api
-                    .eglSurfaceAttrib(display.as_ptr(), surface.as_ptr(), attribute, value)
-                    == TRUE
-                {
-                    Ok(())
-                } else {
-                    Err(self.get_error().unwrap())
-                }
+                self.check_success(
+                    self.api
+                        .eglSurfaceAttrib(display.as_ptr(), surface.as_ptr(), attribute, value)
+                        == TRUE,
+                )
             }
         }
 
@@ -1321,11 +1298,7 @@ mod egl1_1 {
         /// window associated with the current context.
         pub fn swap_interval(&self, display: Display, interval: Int) -> Result<(), Error> {
             unsafe {
-                if self.api.eglSwapInterval(display.as_ptr(), interval) == TRUE {
-                    Ok(())
-                } else {
-                    Err(self.get_error().unwrap())
-                }
+                self.check_success(self.api.eglSwapInterval(display.as_ptr(), interval) == TRUE)
             }
         }
     }
@@ -1402,13 +1375,7 @@ mod egl1_2 {
     impl<T: api::EGL1_2> Instance<T> {
         /// Set the current rendering API.
         pub fn bind_api(&self, api: Enum) -> Result<(), Error> {
-            unsafe {
-                if self.api.eglBindAPI(api) == TRUE {
-                    Ok(())
-                } else {
-                    Err(self.get_error().unwrap())
-                }
-            }
+            unsafe { self.check_success(self.api.eglBindAPI(api) == TRUE) }
         }
 
         /// Query the current rendering API.
@@ -1438,34 +1405,19 @@ mod egl1_2 {
                     attrib_list.as_ptr(),
                 );
 
-                if surface == NO_SURFACE {
-                    Err(self.get_error().unwrap())
-                } else {
-                    Ok(Surface::from_ptr(surface))
-                }
+                self.check_success(surface != NO_SURFACE)?;
+                Ok(Surface::from_ptr(surface))
             }
         }
 
         /// Release EGL per-thread state.
         pub fn release_thread(&self) -> Result<(), Error> {
-            unsafe {
-                if self.api.eglReleaseThread() == TRUE {
-                    Ok(())
-                } else {
-                    Err(self.get_error().unwrap())
-                }
-            }
+            unsafe { self.check_success(self.api.eglReleaseThread() == TRUE) }
         }
 
         /// Complete client API execution prior to subsequent native rendering calls.
         pub fn wait_client(&self) -> Result<(), Error> {
-            unsafe {
-                if self.api.eglWaitClient() == TRUE {
-                    Ok(())
-                } else {
-                    Err(self.get_error().unwrap())
-                }
-            }
+            unsafe { self.check_success(self.api.eglWaitClient() == TRUE) }
         }
     }
 }
@@ -1660,11 +1612,8 @@ mod egl1_5 {
             let sync = self
                 .api
                 .eglCreateSync(display.as_ptr(), ty, attrib_list.as_ptr());
-            if sync == NO_SYNC {
-                Err(self.get_error().unwrap())
-            } else {
-                Ok(Sync(sync))
-            }
+            self.check_success(sync != NO_SYNC)?;
+            Ok(Sync(sync))
         }
 
         /// Destroy a sync object.
@@ -1674,11 +1623,7 @@ mod egl1_5 {
         /// If display does not match the display passed to eglCreateSync when
         /// sync was created, the behaviour is undefined.
         pub unsafe fn destroy_sync(&self, display: Display, sync: Sync) -> Result<(), Error> {
-            if self.api.eglDestroySync(display.as_ptr(), sync.as_ptr()) == TRUE {
-                Ok(())
-            } else {
-                Err(self.get_error().unwrap())
-            }
+            self.check_success(self.api.eglDestroySync(display.as_ptr(), sync.as_ptr()) == TRUE)
         }
 
         /// Wait in the client for a sync object to be signalled.
@@ -1697,11 +1642,8 @@ mod egl1_5 {
             let status =
                 self.api
                     .eglClientWaitSync(display.as_ptr(), sync.as_ptr(), flags, timeout);
-            if status == 0 {
-                Err(self.get_error().unwrap())
-            } else {
-                Ok(status)
-            }
+            self.check_success(status != 0)?;
+            Ok(status)
         }
 
         /// Return an attribute of a sync object.
@@ -1717,15 +1659,15 @@ mod egl1_5 {
             attribute: Int,
         ) -> Result<Attrib, Error> {
             let mut value = 0;
-            if self
-                .api
-                .eglGetSyncAttrib(display.as_ptr(), sync.as_ptr(), attribute, &raw mut value)
-                == TRUE
-            {
-                Ok(value)
-            } else {
-                Err(self.get_error().unwrap())
-            }
+            self.check_success(
+                self.api.eglGetSyncAttrib(
+                    display.as_ptr(),
+                    sync.as_ptr(),
+                    attribute,
+                    &raw mut value,
+                ) == TRUE,
+            )?;
+            Ok(value)
         }
 
         /// Create a new Image object.
@@ -1752,22 +1694,17 @@ mod egl1_5 {
                     buffer.as_ptr(),
                     attrib_list.as_ptr(),
                 );
-                if image == NO_IMAGE {
-                    Err(self.get_error().unwrap())
-                } else {
-                    Ok(Image(image))
-                }
+                self.check_success(image != NO_IMAGE)?;
+                Ok(Image(image))
             }
         }
 
         /// Destroy an Image object.
         pub fn destroy_image(&self, display: Display, image: Image) -> Result<(), Error> {
             unsafe {
-                if self.api.eglDestroyImage(display.as_ptr(), image.as_ptr()) == TRUE {
-                    Ok(())
-                } else {
-                    Err(self.get_error().unwrap())
-                }
+                self.check_success(
+                    self.api.eglDestroyImage(display.as_ptr(), image.as_ptr()) == TRUE,
+                )
             }
         }
 
@@ -1840,11 +1777,8 @@ mod egl1_5 {
                 native_window,
                 attrib_list.as_ptr(),
             );
-            if surface == NO_SURFACE {
-                Err(self.get_error().unwrap())
-            } else {
-                Ok(Surface::from_ptr(surface))
-            }
+            self.check_success(surface != NO_SURFACE)?;
+            Ok(Surface::from_ptr(surface))
         }
 
         /// Create a new EGL offscreen surface.
@@ -1877,11 +1811,8 @@ mod egl1_5 {
                 native_pixmap,
                 attrib_list.as_ptr(),
             );
-            if surface == NO_SURFACE {
-                Err(self.get_error().unwrap())
-            } else {
-                Ok(Surface::from_ptr(surface))
-            }
+            self.check_success(surface != NO_SURFACE)?;
+            Ok(Surface::from_ptr(surface))
         }
 
         /// Wait in the server for a sync object to be signalled.
@@ -1890,11 +1821,9 @@ mod egl1_5 {
         /// when `sync` was created, the behavior is undefined.
         pub fn wait_sync(&self, display: Display, sync: Sync, flags: Int) -> Result<(), Error> {
             unsafe {
-                if self.api.eglWaitSync(display.as_ptr(), sync.as_ptr(), flags) == TRUE {
-                    Ok(())
-                } else {
-                    Err(self.get_error().unwrap())
-                }
+                self.check_success(
+                    self.api.eglWaitSync(display.as_ptr(), sync.as_ptr(), flags) == TRUE,
+                )
             }
         }
     }
@@ -2070,6 +1999,13 @@ macro_rules! api {
 
 		#[cfg(feature="dynamic")]
 		impl<L, A> Dynamic<L, A> {
+			#[cfg(feature="1_1")]
+			/// Caller must ensure the entry points required by B have been loaded.
+			unsafe fn cast_ref<B>(&self) -> &Dynamic<L, B> {
+				// Both types are transparent wrappers of the same RawDynamic<L>.
+				&*ptr::from_ref(self).cast()
+			}
+
 			#[inline(always)]
 			/// Return the underlying EGL library.
 			pub fn library(&self) -> &L {
@@ -2275,26 +2211,18 @@ macro_rules! api {
 			/// ## Safety
 			/// This is fundamentally unsafe since there are no guaranties the input library complies to the EGL API.
 			pub unsafe fn load_from_filename<P: AsRef<std::ffi::OsStr>>(filename: P) -> Result<DynamicInstance<EGL1_0>, libloading::Error> {
-				#[cfg(target_os = "linux")]
-				let lib: libloading::Library = {
-					// On Linux, load library with `RTLD_NOW | RTLD_NODELETE` to fix a SIGSEGV
-					// See https://github.com/timothee-haudebourg/khronos-egl/issues/14 for more details.
-					libloading::os::unix::Library::open(Some(filename), 0x2 | 0x1000)?.into()
-				};
-				#[cfg(not(target_os = "linux"))]
-				let lib = libloading::Library::new(filename)?;
-				Self::load_from(lib)
+				Self::load_from(open_library(filename.as_ref())?)
 			}
 
 			#[inline(always)]
 			/// Create an EGL instance by finding and loading the `libEGL.so.1` or `libEGL.so` library.
 			///
-			/// This is equivalent to `DynamicInstance::load_from_filename("libEGL.so.1")`.
+			/// Tries `libEGL.so` only if loading `libEGL.so.1` fails.
 			///
 			/// ## Safety
 			/// This is fundamentally unsafe since there are no guaranties the found library complies to the EGL API.
 			pub unsafe fn load() -> Result<DynamicInstance<EGL1_0>, libloading::Error> {
-				Self::load_from_filename("libEGL.so.1").or(Self::load_from_filename("libEGL.so"))
+				load_default(|filename| Self::load_from_filename(filename))
 			}
 		}
 	};
@@ -2395,8 +2323,8 @@ macro_rules! api {
 			#[cfg(feature=$version)]
 			impl<L: std::borrow::Borrow<libloading::Library>> AsRef<Dynamic<L, $pred>> for Dynamic<L, $id> {
 				fn as_ref(&self) -> &Dynamic<L, $pred> {
-					// Both types are transparent wrappers of the same RawDynamic.
-					unsafe { &*ptr::from_ref(self).cast::<Dynamic<L, $pred>>() }
+					// Every predecessor's entry points are loaded for this API type.
+					unsafe { self.cast_ref() }
 				}
 			}
 
@@ -2412,8 +2340,7 @@ macro_rules! api {
 			#[cfg(feature=$version)]
 			impl<L: std::borrow::Borrow<libloading::Library>> Downcast<Instance<Dynamic<L, $pred>>> for Instance<Dynamic<L, $id>> {
 				fn downcast(&self) -> &Instance<Dynamic<L, $pred>> {
-					// Both types are transparent wrappers of the same RawDynamic.
-					unsafe { &*ptr::from_ref(self).cast::<Instance<Dynamic<L, $pred>>>() }
+					Instance::from_ref(self.api.downcast())
 				}
 			}
 
@@ -2422,8 +2349,7 @@ macro_rules! api {
 			impl<L: std::borrow::Borrow<libloading::Library>> Upcast<Dynamic<L, $id>> for Dynamic<L, $pred> {
 				fn upcast(&self) -> Option<&Dynamic<L, $id>> {
 					if self.version() >= Version::$id {
-						// Both types are transparent wrappers of the same RawDynamic.
-						Some(unsafe { &*ptr::from_ref(self).cast::<Dynamic<L, $id>>() })
+						Some(unsafe { self.cast_ref() })
 					} else {
 						None
 					}
@@ -2434,12 +2360,7 @@ macro_rules! api {
 			#[cfg(feature=$version)]
 			impl<L: std::borrow::Borrow<libloading::Library>> Upcast<Instance<Dynamic<L, $id>>> for Instance<Dynamic<L, $pred>> {
 				fn upcast(&self) -> Option<&Instance<Dynamic<L, $id>>> {
-					if self.version() >= Version::$id {
-						// Both types are transparent wrappers of the same RawDynamic.
-						Some(unsafe { &*ptr::from_ref(self).cast::<Instance<Dynamic<L, $id>>>() })
-					} else {
-						None
-					}
+					self.api.upcast().map(Instance::from_ref)
 				}
 			}
 		)*
@@ -2495,33 +2416,26 @@ macro_rules! api {
 			/// See [`Library::new`](libloading::Library::new)
 			/// for more details on how the `filename` argument is used.
 			///
-			/// On Linux plateforms, the library is loaded with the `RTLD_NODELETE` flag.
-			/// See [#14](https://github.com/timothee-haudebourg/khronos-egl/issues/14) for more details.
+			/// Uses the same platform-specific loading flags as
+			/// [`DynamicInstance::load_from_filename`].
 			///
 			/// ## Safety
 			/// This is fundamentally unsafe since there are no guaranties the input library complies to the EGL API.
 			pub unsafe fn load_required_from_filename<P: AsRef<std::ffi::OsStr>>(filename: P) -> Result<DynamicInstance<$id>, LoadError<libloading::Error>> {
-				#[cfg(target_os = "linux")]
-				let lib: libloading::Library = {
-					// On Linux, load library with `RTLD_NOW | RTLD_NODELETE` to fix a SIGSEGV
-					// See https://github.com/timothee-haudebourg/khronos-egl/issues/14 for more details.
-					libloading::os::unix::Library::open(Some(filename), 0x2 | 0x1000).map_err(LoadError::Library)?.into()
-				};
-				#[cfg(not(target_os = "linux"))]
-				let lib = libloading::Library::new(filename).map_err(LoadError::Library)?;
-				Self::load_required_from(lib)
+				Self::load_required_from(open_library(filename.as_ref()).map_err(LoadError::Library)?)
 			}
 
 			#[inline(always)]
 			/// Create an EGL instance by finding and loading the `libEGL.so.1` or `libEGL.so` library.
 			/// This function fails if the EGL library does not provide the minimum required version given by the type parameter.
 			///
-			/// This is equivalent to `DynamicInstance::load_required_from_filename("libEGL.so.1")`.
+			/// Tries `libEGL.so` only if loading `libEGL.so.1` fails, including when
+			/// the first library does not provide the required version.
 			///
 			/// ## Safety
 			/// This is fundamentally unsafe since there are no guaranties the found library complies to the EGL API.
 			pub unsafe fn load_required() -> Result<DynamicInstance<$id>, LoadError<libloading::Error>> {
-			    Self::load_required_from_filename("libEGL.so.1").or(Self::load_required_from_filename("libEGL.so"))
+				load_default(|filename| Self::load_required_from_filename(filename))
 			}
 		}
 	}

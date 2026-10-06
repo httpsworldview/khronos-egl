@@ -15,7 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pointers. Custom API implementations must update their signature;
   `Instance::get_proc_address` is unchanged.
 - replace the direct libc dependency with equivalent std::ffi types
+- Share configuration-buffer handling, EGL result conversion, attribute-list
+  validation, library loading, and borrowed version-cast logic.
+- Make the crate-level guide the canonical usage documentation for this fork.
 ### Fixed
+- Only try the fallback EGL library when loading the preferred library fails.
 - Reject null dynamically loaded EGL entry points before recording
   supported API versions.
 - Reject attribute lists without a terminator in an attribute
