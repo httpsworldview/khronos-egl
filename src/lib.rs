@@ -183,7 +183,7 @@ pub struct Instance<T> {
 
 impl<T> Instance<T> {
     /// Cast the API.
-    #[inline(always)]
+    #[inline]
     pub fn cast_into<U: From<T>>(self) -> Instance<U> {
         Instance {
             api: self.api.into(),
@@ -191,7 +191,7 @@ impl<T> Instance<T> {
     }
 
     /// Try to cast the API.
-    #[inline(always)]
+    #[inline]
     pub fn try_cast_into<U: TryFrom<T>>(self) -> Result<Instance<U>, Instance<U::Error>> {
         match self.api.try_into() {
             Ok(t) => Ok(Instance { api: t }),
@@ -200,7 +200,7 @@ impl<T> Instance<T> {
     }
 
     /// Returns the version of the provided EGL API.
-    #[inline(always)]
+    #[inline]
     pub fn version(&self) -> Version
     where
         T: Api,
@@ -210,21 +210,21 @@ impl<T> Instance<T> {
 }
 
 impl<T> Instance<T> {
-    #[inline(always)]
+    #[inline]
     pub const fn new(api: T) -> Instance<T> {
         Instance { api }
     }
 }
 
 impl<T: fmt::Debug> fmt::Debug for Instance<T> {
-    #[inline(always)]
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Instance({:?})", self.api)
     }
 }
 
 impl<T> From<T> for Instance<T> {
-    #[inline(always)]
+    #[inline]
     fn from(t: T) -> Instance<T> {
         Instance::new(t)
     }
@@ -236,7 +236,7 @@ impl<T> From<T> for Instance<T> {
 
 #[cfg(feature = "1_0")]
 mod egl1_0 {
-    use super::*;
+    use super::{api, c_uint, c_void, fmt, ptr, CStr, CString, Instance};
 
     pub type Boolean = c_uint;
     pub type Int = i32;
@@ -261,6 +261,7 @@ mod egl1_0 {
             Display(ptr)
         }
 
+        #[must_use]
         #[inline]
         pub fn as_ptr(&self) -> EGLDisplay {
             self.0
@@ -268,6 +269,7 @@ mod egl1_0 {
     }
 
     #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+    #[repr(transparent)]
     pub struct Config(pub(crate) EGLConfig);
 
     impl Config {
@@ -281,6 +283,7 @@ mod egl1_0 {
             Config(ptr)
         }
 
+        #[must_use]
         #[inline]
         pub fn as_ptr(&self) -> EGLConfig {
             self.0
@@ -301,6 +304,7 @@ mod egl1_0 {
             Context(ptr)
         }
 
+        #[must_use]
         #[inline]
         pub fn as_ptr(&self) -> EGLContext {
             self.0
@@ -321,6 +325,7 @@ mod egl1_0 {
             Surface(ptr)
         }
 
+        #[must_use]
         #[inline]
         pub fn as_ptr(&self) -> EGLSurface {
             self.0
@@ -453,43 +458,42 @@ mod egl1_0 {
     }
 
     impl Error {
+        #[must_use]
         pub fn native(&self) -> Int {
-            use Error::*;
             match self {
-                NotInitialized => NOT_INITIALIZED,
-                BadAccess => BAD_ACCESS,
-                BadAlloc => BAD_ALLOC,
-                BadAttribute => BAD_ATTRIBUTE,
-                BadContext => BAD_CONTEXT,
-                BadConfig => BAD_CONFIG,
-                BadCurrentSurface => BAD_CURRENT_SURFACE,
-                BadDisplay => BAD_DISPLAY,
-                BadSurface => BAD_SURFACE,
-                BadMatch => BAD_MATCH,
-                BadParameter => BAD_PARAMETER,
-                BadNativePixmap => BAD_NATIVE_PIXMAP,
-                BadNativeWindow => BAD_NATIVE_WINDOW,
-                ContextLost => CONTEXT_LOST,
+                Self::NotInitialized => NOT_INITIALIZED,
+                Self::BadAccess => BAD_ACCESS,
+                Self::BadAlloc => BAD_ALLOC,
+                Self::BadAttribute => BAD_ATTRIBUTE,
+                Self::BadContext => BAD_CONTEXT,
+                Self::BadConfig => BAD_CONFIG,
+                Self::BadCurrentSurface => BAD_CURRENT_SURFACE,
+                Self::BadDisplay => BAD_DISPLAY,
+                Self::BadSurface => BAD_SURFACE,
+                Self::BadMatch => BAD_MATCH,
+                Self::BadParameter => BAD_PARAMETER,
+                Self::BadNativePixmap => BAD_NATIVE_PIXMAP,
+                Self::BadNativeWindow => BAD_NATIVE_WINDOW,
+                Self::ContextLost => CONTEXT_LOST,
             }
         }
 
-        fn message(&self) -> &'static str {
-            use Error::*;
+        fn message(self) -> &'static str {
             match self {
-				NotInitialized => "EGL is not initialized, or could not be initialized, for the specified EGL display connection.",
-				BadAccess => "EGL cannot access a requested resource (for example a context is bound in another thread.",
-				BadAlloc => "EGL failed to allocate resources for the requested operation.",
-				BadAttribute => "An unrecognized attribute or attribute value was passed in the attribute list.",
-				BadContext => "An Context argument does not name a valid EGL rendering context.",
-				BadConfig => "An Config argument does not name a valid EGL frame buffer configuration.",
-				BadCurrentSurface => "The current surface of the calling thread is a window, pixel buffer or pixmap that is no longer valid.",
-				BadDisplay => "An Display argument does not name a valid EGL display connection.",
-				BadSurface => "An Surface argument does not name a valid surface (window, pixel buffer or pixmap) configured for GL rendering.",
-				BadMatch => "Arguments are inconsistent (for example, a valid context requires buffers not supplied by a valid surface.",
-				BadParameter => "One or more argument values are invalid.",
-				BadNativePixmap => "A NativePixmapType argument does not refer to a valid native pixmap.",
-				BadNativeWindow => "A NativeWindowType argument does not refer to a valid native window.",
-				ContextLost => "A power management event has occurred. The application must destroy all contexts and reinitialise OpenGL ES state and objects to continue rendering."
+				Self::NotInitialized => "EGL is not initialized, or could not be initialized, for the specified EGL display connection.",
+				Self::BadAccess => "EGL cannot access a requested resource (for example a context is bound in another thread.",
+				Self::BadAlloc => "EGL failed to allocate resources for the requested operation.",
+				Self::BadAttribute => "An unrecognized attribute or attribute value was passed in the attribute list.",
+				Self::BadContext => "An Context argument does not name a valid EGL rendering context.",
+				Self::BadConfig => "An Config argument does not name a valid EGL frame buffer configuration.",
+				Self::BadCurrentSurface => "The current surface of the calling thread is a window, pixel buffer or pixmap that is no longer valid.",
+				Self::BadDisplay => "An Display argument does not name a valid EGL display connection.",
+				Self::BadSurface => "An Surface argument does not name a valid surface (window, pixel buffer or pixmap) configured for GL rendering.",
+				Self::BadMatch => "Arguments are inconsistent (for example, a valid context requires buffers not supplied by a valid surface.",
+				Self::BadParameter => "One or more argument values are invalid.",
+				Self::BadNativePixmap => "A NativePixmapType argument does not refer to a valid native pixmap.",
+				Self::BadNativeWindow => "A NativeWindowType argument does not refer to a valid native window.",
+				Self::ContextLost => "A power management event has occurred. The application must destroy all contexts and reinitialise OpenGL ES state and objects to continue rendering."
 			}
         }
     }
@@ -504,22 +508,21 @@ mod egl1_0 {
         type Error = Int;
 
         fn try_from(e: Int) -> Result<Error, Int> {
-            use Error::*;
             match e {
-                NOT_INITIALIZED => Ok(NotInitialized),
-                BAD_ACCESS => Ok(BadAccess),
-                BAD_ALLOC => Ok(BadAlloc),
-                BAD_ATTRIBUTE => Ok(BadAttribute),
-                BAD_CONTEXT => Ok(BadContext),
-                BAD_CONFIG => Ok(BadConfig),
-                BAD_CURRENT_SURFACE => Ok(BadCurrentSurface),
-                BAD_DISPLAY => Ok(BadDisplay),
-                BAD_SURFACE => Ok(BadSurface),
-                BAD_MATCH => Ok(BadMatch),
-                BAD_PARAMETER => Ok(BadParameter),
-                BAD_NATIVE_PIXMAP => Ok(BadNativePixmap),
-                BAD_NATIVE_WINDOW => Ok(BadNativeWindow),
-                CONTEXT_LOST => Ok(ContextLost),
+                NOT_INITIALIZED => Ok(Self::NotInitialized),
+                BAD_ACCESS => Ok(Self::BadAccess),
+                BAD_ALLOC => Ok(Self::BadAlloc),
+                BAD_ATTRIBUTE => Ok(Self::BadAttribute),
+                BAD_CONTEXT => Ok(Self::BadContext),
+                BAD_CONFIG => Ok(Self::BadConfig),
+                BAD_CURRENT_SURFACE => Ok(Self::BadCurrentSurface),
+                BAD_DISPLAY => Ok(Self::BadDisplay),
+                BAD_SURFACE => Ok(Self::BadSurface),
+                BAD_MATCH => Ok(Self::BadMatch),
+                BAD_PARAMETER => Ok(Self::BadParameter),
+                BAD_NATIVE_PIXMAP => Ok(Self::BadNativePixmap),
+                BAD_NATIVE_WINDOW => Ok(Self::BadNativeWindow),
+                CONTEXT_LOST => Ok(Self::ContextLost),
                 _ => Err(e),
             }
         }
@@ -574,10 +577,13 @@ mod egl1_0 {
                     attrib_list.as_ptr(),
                     ptr::null_mut(),
                     0,
-                    &mut count,
+                    &raw mut count,
                 ) == TRUE
                 {
-                    Ok(count as usize)
+                    Ok(
+                        usize::try_from(count)
+                            .expect("EGL returned a negative configuration count"),
+                    )
                 } else {
                     Err(self.get_error().unwrap())
                 }
@@ -637,12 +643,15 @@ mod egl1_0 {
                     if self.api.eglChooseConfig(
                         display.as_ptr(),
                         attrib_list.as_ptr(),
-                        configs.as_mut_ptr() as *mut EGLConfig,
+                        configs.as_mut_ptr().cast(),
                         capacity.try_into().unwrap(),
-                        &mut count,
+                        &raw mut count,
                     ) == TRUE
                     {
-                        configs.set_len(count as usize);
+                        configs.set_len(
+                            usize::try_from(count)
+                                .expect("EGL returned a negative configuration count"),
+                        );
                         Ok(())
                     } else {
                         Err(self.get_error().unwrap())
@@ -733,10 +742,10 @@ mod egl1_0 {
                     attrib_list.as_ptr(),
                 );
 
-                if context != NO_CONTEXT {
-                    Ok(Context(context))
-                } else {
+                if context == NO_CONTEXT {
                     Err(self.get_error().unwrap())
+                } else {
+                    Ok(Context(context))
                 }
             }
         }
@@ -759,10 +768,10 @@ mod egl1_0 {
                     attrib_list.as_ptr(),
                 );
 
-                if surface != NO_SURFACE {
-                    Ok(Surface(surface))
-                } else {
+                if surface == NO_SURFACE {
                     Err(self.get_error().unwrap())
+                } else {
+                    Ok(Surface(surface))
                 }
             }
         }
@@ -791,10 +800,10 @@ mod egl1_0 {
                 attrib_list.as_ptr(),
             );
 
-            if surface != NO_SURFACE {
-                Ok(Surface(surface))
-            } else {
+            if surface == NO_SURFACE {
                 Err(self.get_error().unwrap())
+            } else {
+                Ok(Surface(surface))
             }
         }
 
@@ -829,10 +838,10 @@ mod egl1_0 {
                 attrib_list,
             );
 
-            if surface != NO_SURFACE {
-                Ok(Surface(surface))
-            } else {
+            if surface == NO_SURFACE {
                 Err(self.get_error().unwrap())
+            } else {
+                Ok(Surface(surface))
             }
         }
 
@@ -875,7 +884,7 @@ mod egl1_0 {
                     display.as_ptr(),
                     config.as_ptr(),
                     attribute,
-                    &mut value,
+                    &raw mut value,
                 ) == TRUE
                 {
                     Ok(value)
@@ -912,10 +921,13 @@ mod egl1_0 {
 
                 if self
                     .api
-                    .eglGetConfigs(display.as_ptr(), std::ptr::null_mut(), 0, &mut count)
+                    .eglGetConfigs(display.as_ptr(), ptr::null_mut(), 0, &raw mut count)
                     == TRUE
                 {
-                    Ok(count as usize)
+                    Ok(
+                        usize::try_from(count)
+                            .expect("EGL returned a negative configuration count"),
+                    )
                 } else {
                     Err(self.get_error().unwrap())
                 }
@@ -961,12 +973,15 @@ mod egl1_0 {
 
                     if self.api.eglGetConfigs(
                         display.as_ptr(),
-                        configs.as_mut_ptr() as *mut EGLConfig,
+                        configs.as_mut_ptr().cast(),
                         capacity.try_into().unwrap(),
-                        &mut count,
+                        &raw mut count,
                     ) == TRUE
                     {
-                        configs.set_len(count as usize);
+                        configs.set_len(
+                            usize::try_from(count)
+                                .expect("EGL returned a negative configuration count"),
+                        );
                         Ok(())
                     } else {
                         Err(self.get_error().unwrap())
@@ -980,10 +995,10 @@ mod egl1_0 {
             unsafe {
                 let display = self.api.eglGetCurrentDisplay();
 
-                if display != NO_DISPLAY {
-                    Some(Display(display))
-                } else {
+                if display == NO_DISPLAY {
                     None
+                } else {
+                    Some(Display(display))
                 }
             }
         }
@@ -993,10 +1008,10 @@ mod egl1_0 {
             unsafe {
                 let surface = self.api.eglGetCurrentSurface(readdraw);
 
-                if surface != NO_SURFACE {
-                    Some(Surface(surface))
-                } else {
+                if surface == NO_SURFACE {
                     None
+                } else {
+                    Some(Surface(surface))
                 }
             }
         }
@@ -1016,10 +1031,10 @@ mod egl1_0 {
         pub unsafe fn get_display(&self, display_id: NativeDisplayType) -> Option<Display> {
             let display = self.api.eglGetDisplay(display_id);
 
-            if display != NO_DISPLAY {
-                Some(Display(display))
-            } else {
+            if display == NO_DISPLAY {
                 None
+            } else {
+                Some(Display(display))
             }
         }
 
@@ -1060,7 +1075,7 @@ mod egl1_0 {
 
                 if self
                     .api
-                    .eglInitialize(display.as_ptr(), &mut major, &mut minor)
+                    .eglInitialize(display.as_ptr(), &raw mut major, &raw mut minor)
                     == TRUE
                 {
                     Ok((major, minor))
@@ -1109,10 +1124,12 @@ mod egl1_0 {
         ) -> Result<Int, Error> {
             unsafe {
                 let mut value = 0;
-                if self
-                    .api
-                    .eglQueryContext(display.as_ptr(), ctx.as_ptr(), attribute, &mut value)
-                    == TRUE
+                if self.api.eglQueryContext(
+                    display.as_ptr(),
+                    ctx.as_ptr(),
+                    attribute,
+                    &raw mut value,
+                ) == TRUE
                 {
                     Ok(value)
                 } else {
@@ -1136,10 +1153,10 @@ mod egl1_0 {
 
                 let c_str = self.api.eglQueryString(display_ptr, name);
 
-                if !c_str.is_null() {
-                    Ok(CStr::from_ptr(c_str))
-                } else {
+                if c_str.is_null() {
                     Err(self.get_error().unwrap())
+                } else {
+                    Ok(CStr::from_ptr(c_str))
                 }
             }
         }
@@ -1157,7 +1174,7 @@ mod egl1_0 {
                     display.as_ptr(),
                     surface.as_ptr(),
                     attribute,
-                    &mut value,
+                    &raw mut value,
                 ) == TRUE
                 {
                     Ok(value)
@@ -1222,7 +1239,7 @@ pub use egl1_0::*;
 
 #[cfg(feature = "1_1")]
 mod egl1_1 {
-    use super::*;
+    use super::{api, Display, Error, Instance, Int, Surface, TRUE};
 
     pub const BACK_BUFFER: Int = 0x3084;
     pub const BIND_TO_TEXTURE_RGB: Int = 0x3039;
@@ -1323,7 +1340,10 @@ pub use egl1_1::*;
 
 #[cfg(feature = "1_2")]
 mod egl1_2 {
-    use super::*;
+    use super::{
+        api, c_uint, c_void, check_int_list, Config, Display, Error, Instance, Int, Surface,
+        NO_SURFACE, TRUE,
+    };
 
     pub type Enum = c_uint;
     pub type EGLClientBuffer = *mut c_void;
@@ -1342,6 +1362,7 @@ mod egl1_2 {
             ClientBuffer(ptr)
         }
 
+        #[must_use]
         #[inline]
         pub fn as_ptr(&self) -> EGLClientBuffer {
             self.0
@@ -1417,10 +1438,10 @@ mod egl1_2 {
                     attrib_list.as_ptr(),
                 );
 
-                if surface != NO_SURFACE {
-                    Ok(Surface::from_ptr(surface))
-                } else {
+                if surface == NO_SURFACE {
                     Err(self.get_error().unwrap())
+                } else {
+                    Ok(Surface::from_ptr(surface))
                 }
             }
         }
@@ -1458,7 +1479,7 @@ pub use egl1_2::*;
 
 #[cfg(feature = "1_3")]
 mod egl1_3 {
-    use super::*;
+    use super::Int;
 
     pub const CONFORMANT: Int = 0x3042;
     pub const CONTEXT_CLIENT_VERSION: Int = 0x3098;
@@ -1483,7 +1504,7 @@ pub use egl1_3::*;
 
 #[cfg(feature = "1_4")]
 mod egl1_4 {
-    use super::*;
+    use super::{api, Context, Enum, Instance, Int, NativeDisplayType, NO_CONTEXT};
 
     pub const DEFAULT_DISPLAY: NativeDisplayType = 0 as NativeDisplayType;
     pub const MULTISAMPLE_RESOLVE_BOX_BIT: Int = 0x0200;
@@ -1500,10 +1521,10 @@ mod egl1_4 {
             unsafe {
                 let context = self.api.eglGetCurrentContext();
 
-                if context != NO_CONTEXT {
-                    Some(Context(context))
-                } else {
+                if context == NO_CONTEXT {
                     None
+                } else {
+                    Some(Context(context))
                 }
             }
         }
@@ -1519,7 +1540,11 @@ pub use egl1_4::*;
 
 #[cfg(feature = "1_5")]
 mod egl1_5 {
-    use super::*;
+    use super::{
+        api, c_void, check_attrib_list, Attrib, ClientBuffer, Config, Context, Display, Enum,
+        Error, Instance, Int, NativeDisplayType, NativePixmapType, NativeWindowType, Surface,
+        NO_DISPLAY, NO_SURFACE, TRUE,
+    };
 
     pub type Time = u64;
     pub type EGLSync = *mut c_void;
@@ -1539,6 +1564,7 @@ mod egl1_5 {
             Sync(ptr)
         }
 
+        #[must_use]
         #[inline]
         pub fn as_ptr(&self) -> EGLSync {
             self.0
@@ -1559,6 +1585,7 @@ mod egl1_5 {
             Image(ptr)
         }
 
+        #[must_use]
         #[inline]
         pub fn as_ptr(&self) -> EGLImage {
             self.0
@@ -1571,12 +1598,12 @@ mod egl1_5 {
     pub const CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY: Int = 0x31BD;
     pub const NO_RESET_NOTIFICATION: Int = 0x31BE;
     pub const LOSE_CONTEXT_ON_RESET: Int = 0x31BF;
-    pub const CONTEXT_OPENGL_CORE_PROFILE_BIT: Int = 0x00000001;
-    pub const CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT: Int = 0x00000002;
+    pub const CONTEXT_OPENGL_CORE_PROFILE_BIT: Int = 0x0001;
+    pub const CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT: Int = 0x0002;
     pub const CONTEXT_OPENGL_DEBUG: Int = 0x31B0;
     pub const CONTEXT_OPENGL_FORWARD_COMPATIBLE: Int = 0x31B1;
     pub const CONTEXT_OPENGL_ROBUST_ACCESS: Int = 0x31B2;
-    pub const OPENGL_ES3_BIT: Int = 0x00000040;
+    pub const OPENGL_ES3_BIT: Int = 0x0040;
     pub const CL_EVENT_HANDLE: Int = 0x309C;
     pub const SYNC_CL_EVENT: Int = 0x30FE;
     pub const SYNC_CL_EVENT_COMPLETE: Int = 0x30FF;
@@ -1587,7 +1614,7 @@ mod egl1_5 {
     pub const SIGNALED: Int = 0x30F2;
     pub const UNSIGNALED: Int = 0x30F3;
     pub const SYNC_FLUSH_COMMANDS_BIT: Int = 0x0001;
-    pub const FOREVER: u64 = 0xFFFFFFFFFFFFFFFFu64;
+    pub const FOREVER: u64 = u64::MAX;
     pub const TIMEOUT_EXPIRED: Int = 0x30F5;
     pub const CONDITION_SATISFIED: Int = 0x30F6;
     pub const NO_SYNC: EGLSync = 0 as EGLSync;
@@ -1633,10 +1660,10 @@ mod egl1_5 {
             let sync = self
                 .api
                 .eglCreateSync(display.as_ptr(), ty, attrib_list.as_ptr());
-            if sync != NO_SYNC {
-                Ok(Sync(sync))
-            } else {
+            if sync == NO_SYNC {
                 Err(self.get_error().unwrap())
+            } else {
+                Ok(Sync(sync))
             }
         }
 
@@ -1670,10 +1697,10 @@ mod egl1_5 {
             let status =
                 self.api
                     .eglClientWaitSync(display.as_ptr(), sync.as_ptr(), flags, timeout);
-            if status != FALSE as Int {
-                Ok(status)
-            } else {
+            if status == 0 {
                 Err(self.get_error().unwrap())
+            } else {
+                Ok(status)
             }
         }
 
@@ -1690,12 +1717,10 @@ mod egl1_5 {
             attribute: Int,
         ) -> Result<Attrib, Error> {
             let mut value = 0;
-            if self.api.eglGetSyncAttrib(
-                display.as_ptr(),
-                sync.as_ptr(),
-                attribute,
-                &mut value as *mut Attrib,
-            ) == TRUE
+            if self
+                .api
+                .eglGetSyncAttrib(display.as_ptr(), sync.as_ptr(), attribute, &raw mut value)
+                == TRUE
             {
                 Ok(value)
             } else {
@@ -1727,10 +1752,10 @@ mod egl1_5 {
                     buffer.as_ptr(),
                     attrib_list.as_ptr(),
                 );
-                if image != NO_IMAGE {
-                    Ok(Image(image))
-                } else {
+                if image == NO_IMAGE {
                     Err(self.get_error().unwrap())
+                } else {
+                    Ok(Image(image))
                 }
             }
         }
@@ -1775,13 +1800,13 @@ mod egl1_5 {
             let display =
                 self.api
                     .eglGetPlatformDisplay(platform, native_display, attrib_list.as_ptr());
-            if display != NO_DISPLAY {
-                Ok(Display::from_ptr(display))
-            } else {
+            if display == NO_DISPLAY {
                 // NOTE: The spec says that "If platform is valid but no display matching
                 // `native_display` is available, then `EGL_NO_DISPLAY` is returned;
                 // no error condition is raised in this case.". So we "emulate" the error.
                 Err(self.get_error().unwrap_or(Error::BadDisplay))
+            } else {
+                Ok(Display::from_ptr(display))
             }
         }
 
@@ -1815,10 +1840,10 @@ mod egl1_5 {
                 native_window,
                 attrib_list.as_ptr(),
             );
-            if surface != NO_SURFACE {
-                Ok(Surface::from_ptr(surface))
-            } else {
+            if surface == NO_SURFACE {
                 Err(self.get_error().unwrap())
+            } else {
+                Ok(Surface::from_ptr(surface))
             }
         }
 
@@ -1852,10 +1877,10 @@ mod egl1_5 {
                 native_pixmap,
                 attrib_list.as_ptr(),
             );
-            if surface != NO_SURFACE {
-                Ok(Surface::from_ptr(surface))
-            } else {
+            if surface == NO_SURFACE {
                 Err(self.get_error().unwrap())
+            } else {
+                Ok(Surface::from_ptr(surface))
             }
         }
 
@@ -2094,19 +2119,11 @@ macro_rules! api {
 					#[cfg(feature=$version)]
 					match $id::load_from(&mut result.raw) {
 						Ok(()) => result.raw.set_version(Version::$id),
-						Err(libloading::Error::DlSymUnknown) => {
+						Err(e @ (libloading::Error::DlSymUnknown | libloading::Error::DlSym { .. })) => {
 							if Version::$id == Version::EGL1_0 {
-								return Err(libloading::Error::DlSymUnknown) // we require at least EGL 1.0.
-							} else {
-								return Ok(result)
+								return Err(e) // we require at least EGL 1.0.
 							}
-						},
-						Err(libloading::Error::DlSym { desc }) => {
-							if Version::$id == Version::EGL1_0 {
-								return Err(libloading::Error::DlSym { desc }) // we require at least EGL 1.0.
-							} else {
-								return Ok(result)
-							}
+							return Ok(result)
 						},
 						Err(e) => return Err(e)
 					}
@@ -2378,7 +2395,8 @@ macro_rules! api {
 			#[cfg(feature=$version)]
 			impl<L: std::borrow::Borrow<libloading::Library>> AsRef<Dynamic<L, $pred>> for Dynamic<L, $id> {
 				fn as_ref(&self) -> &Dynamic<L, $pred> {
-					unsafe { std::mem::transmute(self) } // this is safe because both types have the same repr.
+					// Both types are transparent wrappers of the same RawDynamic.
+					unsafe { &*ptr::from_ref(self).cast::<Dynamic<L, $pred>>() }
 				}
 			}
 
@@ -2386,7 +2404,7 @@ macro_rules! api {
 			#[cfg(feature=$version)]
 			impl<L: std::borrow::Borrow<libloading::Library>> Downcast<Dynamic<L, $pred>> for Dynamic<L, $id> {
 				fn downcast(&self) -> &Dynamic<L, $pred> {
-					unsafe { std::mem::transmute(self) } // this is safe because both types have the same repr.
+					self.as_ref()
 				}
 			}
 
@@ -2394,7 +2412,8 @@ macro_rules! api {
 			#[cfg(feature=$version)]
 			impl<L: std::borrow::Borrow<libloading::Library>> Downcast<Instance<Dynamic<L, $pred>>> for Instance<Dynamic<L, $id>> {
 				fn downcast(&self) -> &Instance<Dynamic<L, $pred>> {
-					unsafe { std::mem::transmute(self) } // this is safe because both types have the same repr.
+					// Both types are transparent wrappers of the same RawDynamic.
+					unsafe { &*ptr::from_ref(self).cast::<Instance<Dynamic<L, $pred>>>() }
 				}
 			}
 
@@ -2404,7 +2423,7 @@ macro_rules! api {
 				fn upcast(&self) -> Option<&Dynamic<L, $id>> {
 					if self.version() >= Version::$id {
 						// Both types are transparent wrappers of the same RawDynamic.
-						Some(unsafe { std::mem::transmute::<&Self, &Dynamic<L, $id>>(self) })
+						Some(unsafe { &*ptr::from_ref(self).cast::<Dynamic<L, $id>>() })
 					} else {
 						None
 					}
@@ -2417,7 +2436,7 @@ macro_rules! api {
 				fn upcast(&self) -> Option<&Instance<Dynamic<L, $id>>> {
 					if self.version() >= Version::$id {
 						// Both types are transparent wrappers of the same RawDynamic.
-						Some(unsafe { std::mem::transmute::<&Self, &Instance<Dynamic<L, $id>>>(self) })
+						Some(unsafe { &*ptr::from_ref(self).cast::<Instance<Dynamic<L, $id>>>() })
 					} else {
 						None
 					}

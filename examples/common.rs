@@ -183,7 +183,7 @@ impl Dispatch<xdg_wm_base::XdgWmBase, ()> for State {
         _: &mut Self,
         xdg: &xdg_wm_base::XdgWmBase,
         event: xdg_wm_base::Event,
-        _: &(),
+        (): &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
@@ -198,7 +198,7 @@ impl Dispatch<xdg_surface::XdgSurface, ()> for State {
         state: &mut Self,
         surface: &xdg_surface::XdgSurface,
         event: xdg_surface::Event,
-        _: &(),
+        (): &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
@@ -221,7 +221,7 @@ impl Dispatch<xdg_toplevel::XdgToplevel, ()> for State {
         state: &mut Self,
         _: &xdg_toplevel::XdgToplevel,
         event: xdg_toplevel::Event,
-        _: &(),
+        (): &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {

@@ -37,7 +37,10 @@ fn int_lists_require_a_terminator_in_an_attribute_position() {
 #[test]
 fn attrib_lists_require_a_terminator_in_an_attribute_position() {
     for &(list, expected) in CASES {
-        let list: Vec<Attrib> = list.iter().map(|&value| value as Attrib).collect();
+        let list: Vec<Attrib> = list
+            .iter()
+            .map(|&value| Attrib::try_from(value).unwrap())
+            .collect();
         assert_eq!(check_attrib_list(&list), expected, "list: {list:?}");
     }
 }
