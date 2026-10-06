@@ -1,0 +1,88 @@
+name: CI
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test (Rust ${{ matrix.rust }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep the MSRV in sync with package.rust-version
+        rust: ["1.85.0", stable, nightly]
+    env:
+      RUSTUP_TOOLCHAIN: ${{ matrix.rust }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+      - name: Install EGL and Wayland
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y pkg-config libegl-dev libgles-dev libwayland-dev
+      - name: Test default features
+        run: cargo test
+      - name: Test static and dynamic linking
+        run: |
+          cargo test --features "static dynamic"
+          cargo build --all-targets --features "static dynamic"
+      - name: Smoke-test dynamic loading
+        run: cargo run --example load-minimal --no-default-features --features "dynamic 1_4"
+      - name: Check EGL feature levels
+        run: |
+          for version in 1_0 1_1 1_2 1_3 1_4 1_5; do
+            for features in "$version" "static,$version" "dynamic,$version"; do
+              cargo check --all-targets --no-default-features --features "$features"
+            done
+          done
+          # All features includes no-pkg-config: the caller must supply linking.
+          cargo check --all-targets --all-features
+      - name: Check formatting, Clippy and documentation
+        if: matrix.rust == 'stable'
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: |
+          rustup component add rustfmt clippy
+          cargo fmt --all -- --check
+          cargo clippy --all-targets --features "static dynamic" -- -D warnings
+          cargo doc --no-deps
+          cargo doc --no-deps --all-features
+
+  cross:
+    name: Build (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-linux-android, x86_64-pc-windows-gnu]
+    env:
+      RUSTUP_TOOLCHAIN: stable
+      CARGO_BUILD_TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Rust and target
+        run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --target "$CARGO_BUILD_TARGET"
+      - name: Install Windows import-library tools
+        if: matrix.target == 'x86_64-pc-windows-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y binutils-mingw-w64-x86-64
+      - name: Build library
+        run: cargo build --lib --features dynamic
