@@ -29,7 +29,6 @@ dynamic = ["libloading"]
 "1_0" = []
 
 [dependencies]
-libc = "^0.2"
 libloading = { version = "^0.8", optional = true }
 
 [build-dependencies]

@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Option<extern "system" fn()>` to correctly represent null
   pointers. Custom API implementations must update their signature;
   `Instance::get_proc_address` is unchanged.
+- replace the direct libc dependency with equivalent std::ffi types
 ### Fixed
 - Reject null dynamically loaded EGL entry points before recording
   supported API versions.

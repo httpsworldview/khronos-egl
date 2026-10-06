@@ -138,15 +138,10 @@
 #![allow(non_upper_case_globals)]
 #![allow(non_snake_case)]
 
-extern crate libc;
-
 use std::convert::{TryFrom, TryInto};
-use std::ffi::CStr;
-use std::ffi::CString;
+use std::ffi::{c_char, c_uint, c_void, CStr, CString};
 use std::fmt;
 use std::ptr;
-
-use libc::{c_char, c_uint, c_void};
 
 /// EGL API provider.
 pub trait Api {
