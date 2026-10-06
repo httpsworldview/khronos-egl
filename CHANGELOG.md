@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Option<extern "system" fn()>` to correctly represent null pointers. Custom API
   implementations must update their signature; `Instance::get_proc_address` is unchanged.
 ### Fixed
+- Reject attribute lists without a terminator in an attribute position, preventing
+  EGL from reading past the slice when `NONE` appears only as a value.
 - Return `BadDisplay` instead of panicking when `eglGetPlatformDisplay` returns
   `EGL_NO_DISPLAY` without an EGL error (PR #36).
 - Make dynamic API version casts use explicitly compatible layouts.

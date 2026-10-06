@@ -2,37 +2,31 @@
 //!
 //! ## Project status
 //!
-//! This repository is an actively maintained fork of
+//! This repository is a fork of
 //! [timothee-haudebourg/khronos-egl](https://github.com/timothee-haudebourg/khronos-egl),
-//! maintained independently by
-//! [@httpsworldview](https://github.com/httpsworldview).
-//!
-//! Please direct issues and pull requests for this fork to
-//! [httpsworldview/khronos-egl](https://github.com/httpsworldview/khronos-egl).
-//!
-//! The [crates.io releases](https://crates.io/crates/khronos-egl) and
-//! [docs.rs documentation](https://docs.rs/khronos-egl) refer to upstream,
-//! not this fork.
-//!
-//! Upstream `khronos-egl` originated as a fork of the
-//! [egl](https://crates.io/crates/egl) crate.
+//! which I, Maika Namuo, plan to maintain independently for the
+//! foreseeable future.
 //!
 //! ## Usage
 //!
-//! You can access the EGL API using an [`Instance`]
-//! object defined by either statically linking with `libEGL.so.1` at compile time,
-//! or dynamically loading the EGL library at runtime.
+//! You can access the EGL API using an [`Instance`] object defined by
+//! either statically linking with `libEGL.so.1` at compile time, or
+//! dynamically loading the EGL library at runtime.
 //!
 //! ### Static linking
 //!
-//! You must enable static linking using the `static` feature in your `Cargo.toml`:
+//! You must enable static linking using the `static` feature in your
+//! `Cargo.toml`:
+//!
 //! ```toml
 //! khronos-egl = { version = ..., features = ["static"] }
 //! ```
 //!
-//! This will add a dependency to the [`pkg-config`](https://crates.io/crates/pkg-config) crate,
-//! necessary to find the EGL library at compile time.
-//! Here is a simple example showing how to use this library to create an EGL context when static linking is enabled.
+//! This will add a dependency to the
+//! [`pkg-config`](https://crates.io/crates/pkg-config) crate,
+//! necessary to find the EGL library at compile time.  Here is a
+//! simple example showing how to use this library to create an EGL
+//! context when static linking is enabled.
 //!
 //! ```no_run
 //! use khronos_egl as egl;
@@ -540,7 +534,7 @@ mod egl1_0 {
 	}
 
 	pub fn check_int_list(attrib_list: &[Int]) -> Result<(), Error> {
-		if attrib_list.last() == Some(&NONE) {
+		if attrib_list.iter().step_by(2).any(|&attrib| attrib == NONE) {
 			Ok(())
 		} else {
 			Err(Error::BadParameter)
@@ -548,7 +542,11 @@ mod egl1_0 {
 	}
 
 	pub fn check_attrib_list(attrib_list: &[Attrib]) -> Result<(), Error> {
-		if attrib_list.last() == Some(&ATTRIB_NONE) {
+		if attrib_list
+			.iter()
+			.step_by(2)
+			.any(|&attrib| attrib == ATTRIB_NONE)
+		{
 			Ok(())
 		} else {
 			Err(Error::BadParameter)
