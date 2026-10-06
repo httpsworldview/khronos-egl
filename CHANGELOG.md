@@ -7,10 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Changed
-- Declare Rust 1.85 as the minimum supported Rust version; retain
-  edition 2021.
-- Refresh CI to check formatting, Clippy, doctests, EGL feature
-  levels, and the MSRV.
+- Declare Rust 1.85 as the MSRV.
 - The raw `api::EGL1_0::eglGetProcAddress` method now returns
   `Option<extern "system" fn()>` to correctly represent null
   pointers. Custom API implementations must update their signature;
