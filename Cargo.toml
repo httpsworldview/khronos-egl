@@ -2,14 +2,19 @@
 name          = "khronos-egl"
 version       = "6.0.0"
 authors       = ["Timothée Haudebourg <author@haudebourg.net>", "Sean Kerr <sean@metatomic.io>"]
-license       = "MIT/Apache-2.0"
+license       = "MIT OR Apache-2.0"
 description   = "Rust bindings for EGL"
-repository    = "https://github.com/timothee-haudebourg/khronos-egl"
+repository    = "https://github.com/httpsworldview/khronos-egl"
+# Upstream API documentation, not documentation built from this fork.
 documentation = "https://docs.rs/khronos-egl"
 readme        = "README.md"
 keywords      = ["egl", "gl", "khronos", "opengl"]
 build         = "build.rs"
 edition       = "2021"
+rust-version  = "1.85"
+
+[package.metadata.docs.rs]
+all-features = true
 
 [features]
 default = ["1_5"]
@@ -38,11 +43,11 @@ wayland-egl = { version = "^0.28" }
 
 [[example]]
 name = "wayland-static"
-required-features = ["static"]
+required-features = ["static", "1_5"]
 
 [[example]]
 name = "wayland-dynamic"
-required-features = ["dynamic"]
+required-features = ["dynamic", "1_5"]
 
 [[example]]
 name = "load-minimal"

@@ -1,6 +1,21 @@
 //! This crate provides a binding for the Khronos EGL 1.5 API.
-//! It was originally a fork of the [egl](https://crates.io/crates/egl) crate,
-//! which is left unmaintained.
+//!
+//! ## Project status
+//!
+//! This repository is an actively maintained fork of
+//! [timothee-haudebourg/khronos-egl](https://github.com/timothee-haudebourg/khronos-egl),
+//! maintained independently by
+//! [@httpsworldview](https://github.com/httpsworldview).
+//!
+//! Please direct issues and pull requests for this fork to
+//! [httpsworldview/khronos-egl](https://github.com/httpsworldview/khronos-egl).
+//!
+//! The [crates.io releases](https://crates.io/crates/khronos-egl) and
+//! [docs.rs documentation](https://docs.rs/khronos-egl) refer to upstream,
+//! not this fork.
+//!
+//! Upstream `khronos-egl` originated as a fork of the
+//! [egl](https://crates.io/crates/egl) crate.
 //!
 //! ## Usage
 //!
@@ -19,9 +34,10 @@
 //! necessary to find the EGL library at compile time.
 //! Here is a simple example showing how to use this library to create an EGL context when static linking is enabled.
 //!
-//! ```rust
-//! extern crate khronos_egl as egl;
+//! ```no_run
+//! use khronos_egl as egl;
 //!
+//! # #[cfg(all(feature = "static", feature = "1_5"))]
 //! fn main() -> Result<(), egl::Error> {
 //!   // Create an EGL API instance.
 //!   // The `egl::Static` API implementation is only available when the `static` feature is enabled.
@@ -47,10 +63,12 @@
 //!     egl::NONE
 //!   ];
 //!
-//!   egl.create_context(display, config, None, &context_attributes);
+//!   egl.create_context(display, config, None, &context_attributes)?;
 //!
 //!   Ok(())
 //! }
+//! # #[cfg(not(all(feature = "static", feature = "1_5")))]
+//! # fn main() {}
 //! ```
 //!
 //! The creation of a `Display` instance is not detailed here since it depends on your display server.
@@ -60,17 +78,12 @@
 //!
 //! #### Static API Instance
 //!
-//! It may be bothering in some applications to pass the `Instance` to every fonction that needs to call the EGL API.
-//! One workaround would be to define a static `Instance`,
-//! which should be possible to define at compile time using static linking.
-//! However this is not yet supported by the stable `rustc` compiler.
-//! With the nightly compiler,
-//! you can combine the `nightly` and `static` features so that this crate
-//! can provide a static `Instance`, called `API` that can then be accessed everywhere.
+//! With the `static` feature, `API` provides a global instance on stable Rust.
+//! You can also define your own static instance using [`Instance::new`].
 //!
 //! ```
-//! # extern crate khronos_egl as egl;
-//! use egl::API as egl;
+//! # #[cfg(feature = "static")]
+//! use khronos_egl::API as egl;
 //! ```
 //!
 //! ### Dynamic Linking
@@ -86,16 +99,21 @@
 //! You can then load the EGL API into a `Instance<Dynamic<libloading::Library>>` as follows:
 //!
 //! ```
-//! # extern crate khronos_egl as egl;
+//! # use khronos_egl as egl;
+//! # #[cfg(all(feature = "dynamic", feature = "1_4"))]
+//! # {
 //! let lib = unsafe { libloading::Library::new("libEGL.so.1") }.expect("unable to find libEGL.so.1");
 //! let egl = unsafe { egl::DynamicInstance::<egl::EGL1_4>::load_required_from(lib) }.expect("unable to load libEGL.so.1");
+//! # }
 //! ```
 //!
 //! Here, `egl::EGL1_4` is used to specify what is the minimum required version of EGL that must be provided by `libEGL.so.1`.
 //! This will return a `DynamicInstance<egl::EGL1_4>`, however in that case where `libEGL.so.1` provides a more recent version of EGL,
 //! you can still upcast ths instance to provide version specific features:
 //! ```
-//! # extern crate khronos_egl as egl;
+//! # use khronos_egl as egl;
+//! # #[cfg(all(feature = "dynamic", feature = "1_5"))]
+//! # {
 //! # let lib = unsafe { libloading::Library::new("libEGL.so.1") }.expect("unable to find libEGL.so.1");
 //! # let egl = unsafe { egl::DynamicInstance::<egl::EGL1_4>::load_required_from(lib) }.expect("unable to load libEGL.so.1");
 //! match egl.upcast::<egl::EGL1_5>() {
@@ -106,6 +124,7 @@
 //!     // do something with EGL 1.4 instead.
 //!   }
 //! };
+//! # }
 //! ```
 //!
 //! ## Troubleshooting
@@ -165,6 +184,7 @@ impl<T> Upcast<T> for T {
 ///
 /// An instance wraps an interface to the EGL API and provide
 /// rust-friendly access to it.
+#[repr(transparent)]
 pub struct Instance<T> {
 	api: T,
 }
@@ -315,25 +335,8 @@ mod egl1_0 {
 		}
 	}
 
-	#[cfg(not(android))]
 	pub type NativePixmapType = *mut c_void;
-
-	#[cfg(not(android))]
 	pub type NativeWindowType = *mut c_void;
-
-	#[repr(C)]
-	#[cfg(android)]
-	struct android_native_window_t;
-
-	#[repr(C)]
-	#[cfg(android)]
-	struct egl_native_pixmap_t;
-
-	#[cfg(android)]
-	pub type NativePixmapType = *mut egl_native_pixmap_t;
-
-	#[cfg(android)]
-	pub type NativeWindowType = *mut android_native_window_t;
 
 	pub const ALPHA_SIZE: Int = 0x3021;
 	pub const BAD_ACCESS: Int = 0x3002;
@@ -352,6 +355,7 @@ mod egl1_0 {
 	pub const BUFFER_SIZE: Int = 0x3020;
 	pub const CONFIG_CAVEAT: Int = 0x3027;
 	pub const CONFIG_ID: Int = 0x3028;
+	pub const CONTEXT_LOST: Int = 0x300E;
 	pub const CORE_NATIVE_ENGINE: Int = 0x305B;
 	pub const DEPTH_SIZE: Int = 0x3025;
 	pub const DONT_CARE: Int = -1;
@@ -593,9 +597,9 @@ mod egl1_0 {
 		///
 		/// ## Example
 		///
-		/// ```
-		/// # extern crate khronos_egl as egl;
-		/// # extern crate wayland_client;
+		/// ```no_run
+		/// # use khronos_egl as egl;
+		/// # #[cfg(feature = "static")]
 		/// # fn main() -> Result<(), egl::Error> {
 		/// # let egl = egl::Instance::new(egl::Static);
 		/// # let wayland_display = wayland_client::Display::connect_to_env().expect("unable to connect to the wayland server");
@@ -610,6 +614,8 @@ mod egl1_0 {
 		/// egl.choose_config(display, &attrib_list, &mut configs)?;
 		/// # Ok(())
 		/// # }
+		/// # #[cfg(not(feature = "static"))]
+		/// # fn main() {}
 		/// ```
 		///
 		/// This will return a `BadParameter` error if `attrib_list` is not a valid
@@ -654,9 +660,9 @@ mod egl1_0 {
 		///
 		/// This is an helper function that will call `choose_config` with a buffer of
 		/// size 1, which is equivalent to:
-		/// ```
-		/// # extern crate khronos_egl as egl;
-		/// # extern crate wayland_client;
+		/// ```no_run
+		/// # use khronos_egl as egl;
+		/// # #[cfg(feature = "static")]
 		/// # fn main() -> Result<(), egl::Error> {
 		/// # let egl = egl::Instance::new(egl::Static);
 		/// # let wayland_display = wayland_client::Display::connect_to_env().expect("unable to connect to the wayland server");
@@ -668,6 +674,8 @@ mod egl1_0 {
 		/// configs.first();
 		/// # Ok(())
 		/// # }
+		/// # #[cfg(not(feature = "static"))]
+		/// # fn main() {}
 		/// ```
 		pub fn choose_first_config(
 			&self,
@@ -886,19 +894,21 @@ mod egl1_0 {
 		/// You can use it to setup the correct capacity for the configurations buffer in [`get_configs`](Self::get_configs).
 		///
 		/// ## Example
-		/// ```
-		/// # extern crate khronos_egl as egl;
-		/// # extern crate wayland_client;
+		/// ```no_run
+		/// # use khronos_egl as egl;
+		/// # #[cfg(feature = "static")]
 		/// # fn main() -> Result<(), egl::Error> {
 		/// # let egl = egl::Instance::new(egl::Static);
 		/// # let wayland_display = wayland_client::Display::connect_to_env().expect("unable to connect to the wayland server");
 		/// # let display = unsafe { egl.get_display(wayland_display.get_display_ptr() as *mut std::ffi::c_void) }.unwrap();
 		/// # egl.initialize(display)?;
 		/// let mut configs = Vec::with_capacity(egl.get_config_count(display)?);
-		/// egl.get_configs(display, &mut configs);
-		/// assert!(configs.len() > 0);
+		/// egl.get_configs(display, &mut configs)?;
+		/// assert!(!configs.is_empty());
 		/// # Ok(())
 		/// # }
+		/// # #[cfg(not(feature = "static"))]
+		/// # fn main() {}
 		/// ```
 		pub fn get_config_count(&self, display: Display) -> Result<usize, Error> {
 			unsafe {
@@ -923,18 +933,20 @@ mod egl1_0 {
 		/// and setup the buffer's capacity accordingly.
 		///
 		/// ## Example
-		/// ```
-		/// # extern crate khronos_egl as egl;
-		/// # extern crate wayland_client;
+		/// ```no_run
+		/// # use khronos_egl as egl;
+		/// # #[cfg(feature = "static")]
 		/// # fn main() -> Result<(), egl::Error> {
 		/// # let egl = egl::Instance::new(egl::Static);
 		/// # let wayland_display = wayland_client::Display::connect_to_env().expect("unable to connect to the wayland server");
 		/// # let display = unsafe { egl.get_display(wayland_display.get_display_ptr() as *mut std::ffi::c_void) }.unwrap();
 		/// # egl.initialize(display)?;
 		/// let mut configs = Vec::with_capacity(egl.get_config_count(display)?);
-		/// egl.get_configs(display, &mut configs);
+		/// egl.get_configs(display, &mut configs)?;
 		/// # Ok(())
 		/// # }
+		/// # #[cfg(not(feature = "static"))]
+		/// # fn main() {}
 		/// ```
 		pub fn get_configs(
 			&self,
@@ -1040,12 +1052,7 @@ mod egl1_0 {
 			unsafe {
 				let string = CString::new(procname).unwrap();
 
-				let addr = self.api.eglGetProcAddress(string.as_ptr());
-				if !(addr as *const ()).is_null() {
-					Some(addr)
-				} else {
-					None
-				}
+				self.api.eglGetProcAddress(string.as_ptr())
 			}
 		}
 
@@ -1224,7 +1231,6 @@ mod egl1_1 {
 	pub const BACK_BUFFER: Int = 0x3084;
 	pub const BIND_TO_TEXTURE_RGB: Int = 0x3039;
 	pub const BIND_TO_TEXTURE_RGBA: Int = 0x303A;
-	pub const CONTEXT_LOST: Int = 0x300E;
 	pub const MIN_SWAP_INTERVAL: Int = 0x303B;
 	pub const MAX_SWAP_INTERVAL: Int = 0x303C;
 	pub const MIPMAP_TEXTURE: Int = 0x3082;
@@ -1909,12 +1915,7 @@ macro_rules! api {
 
 		#[cfg(feature="static")]
 		mod ffi {
-			use libc::{c_char, c_void};
-
-			use super::{
-				Attrib, Boolean, EGLClientBuffer, EGLConfig, EGLContext, EGLDisplay, EGLImage, EGLSurface,
-				EGLSync, Enum, Int, NativeDisplayType, NativePixmapType, NativeWindowType, Time,
-			};
+			use super::*;
 
 			$(
 				extern "system" {
@@ -2040,6 +2041,7 @@ macro_rules! api {
 		///
 		/// This type is only available when the `dynamic` feature is enabled.
 		/// In most cases, you may prefer to directly use the `DynamicInstance` type.
+		#[repr(transparent)]
 		pub struct Dynamic<L, A> {
 			raw: RawDynamic<L>,
 			_api_version: std::marker::PhantomData<A>
@@ -2093,6 +2095,7 @@ macro_rules! api {
 				let mut result = Dynamic::unloaded(lib, Version::EGL1_0);
 
 				$(
+					#[cfg(feature=$version)]
 					match $id::load_from(&mut result.raw) {
 						Ok(()) => result.raw.set_version(Version::$id),
 						Err(libloading::Error::DlSymUnknown) => {
@@ -2179,14 +2182,23 @@ macro_rules! api {
 		/// An implementation of this trait can be used to create an [`Instance`].
 		///
 		/// This crate provides two implementation of this trait:
-		///  - [`Static`] which is available with the `static` feature enabled,
+		///  - [`Static`](crate#static-linking), available with the `static` feature enabled,
 		///    defined by statically linking to the EGL library at compile time.
-		///  - [`Dynamic`] which is available with the `dynamic` feature enabled,
+		///  - [`Dynamic`](crate#dynamic-linking), available with the `dynamic` feature enabled,
 		///    defined by dynamically linking to the EGL library at runtime.
 		///    In this case, you may prefer to directly use the `DynamicInstance` type.
+		///
+		/// # Safety
+		///
+		/// Implementations must follow the EGL specification for every entry point,
+		/// including its requirements for pointer validity and object lifetimes.
 		#[cfg(feature=$version)]
 		pub unsafe trait $id $($deps)* {
 			$(
+				/// # Safety
+				///
+				/// Arguments must satisfy the requirements of the corresponding EGL
+				/// function, including the validity of pointers and handles.
 				unsafe fn $name (&self, $($arg : $atype ),* ) -> $rtype ;
 			)*
 		}
@@ -2396,7 +2408,8 @@ macro_rules! api {
 			impl<L: std::borrow::Borrow<libloading::Library>> Upcast<Dynamic<L, $id>> for Dynamic<L, $pred> {
 				fn upcast(&self) -> Option<&Dynamic<L, $id>> {
 					if self.version() >= Version::$id {
-						Some(unsafe { std::mem::transmute(self) }) // this is safe because both types have the same repr.
+						// Both types are transparent wrappers of the same RawDynamic.
+						Some(unsafe { std::mem::transmute::<&Self, &Dynamic<L, $id>>(self) })
 					} else {
 						None
 					}
@@ -2408,7 +2421,8 @@ macro_rules! api {
 			impl<L: std::borrow::Borrow<libloading::Library>> Upcast<Instance<Dynamic<L, $id>>> for Instance<Dynamic<L, $pred>> {
 				fn upcast(&self) -> Option<&Instance<Dynamic<L, $id>>> {
 					if self.version() >= Version::$id {
-						Some(unsafe { std::mem::transmute(self) }) // this is safe because both types have the same repr.
+						// Both types are transparent wrappers of the same RawDynamic.
+						Some(unsafe { std::mem::transmute::<&Self, &Instance<Dynamic<L, $id>>>(self) })
 					} else {
 						None
 					}
@@ -2554,7 +2568,7 @@ api! {
 		fn eglGetCurrentSurface(readdraw: Int) -> EGLSurface;
 		fn eglGetDisplay(display_id: NativeDisplayType) -> EGLDisplay;
 		fn eglGetError() -> Int;
-		fn eglGetProcAddress(procname: *const c_char) -> extern "system" fn();
+		fn eglGetProcAddress(procname: *const c_char) -> Option<extern "system" fn()>;
 		fn eglInitialize(display: EGLDisplay, major: *mut Int, minor: *mut Int) -> Boolean;
 		fn eglMakeCurrent(
 			display: EGLDisplay,

@@ -1,11 +1,11 @@
 extern crate khronos_egl as egl;
 
 use egl::API as egl;
-use gl::types::{GLboolean, GLchar, GLenum, GLint, GLuint, GLvoid};
+use gl::types::{GLboolean, GLchar, GLenum, GLint, GLuint};
+use std::cell::Cell;
 use std::ffi::CStr;
 use std::ptr;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::rc::Rc;
 
 use wayland_client::{
 	protocol::{wl_compositor::WlCompositor, wl_surface::WlSurface},
@@ -20,9 +20,8 @@ use wayland_protocols::xdg_shell::client::{
 fn process_xdg_event(xdg: Main<XdgWmBase>, event: xdg_wm_base::Event, _dd: DispatchData) {
 	use xdg_wm_base::Event::*;
 
-	match event {
-		Ping { serial } => xdg.pong(serial),
-		_ => (),
+	if let Ping { serial } = event {
+		xdg.pong(serial);
 	}
 }
 
@@ -106,7 +105,7 @@ fn create_context(display: egl::Display) -> (egl::Context, egl::Config) {
 
 struct Surface {
 	handle: Main<WlSurface>,
-	initialized: AtomicBool,
+	initialized: Cell<bool>,
 }
 
 fn create_surface(
@@ -116,7 +115,7 @@ fn create_surface(
 	egl_config: egl::Config,
 	width: i32,
 	height: i32,
-) -> Arc<Surface> {
+) -> Rc<Surface> {
 	let wl_surface = ctx.compositor.create_surface();
 	let xdg_surface = ctx.xdg.get_xdg_surface(&wl_surface);
 
@@ -127,52 +126,49 @@ fn create_surface(
 	wl_surface.commit();
 	ctx.display.flush().unwrap();
 
-	let surface = Arc::new(Surface {
+	let surface = Rc::new(Surface {
 		handle: wl_surface,
-		initialized: AtomicBool::new(false),
+		initialized: Cell::new(false),
 	});
 
-	let weak_surface = Arc::downgrade(&surface);
+	let weak_surface = Rc::downgrade(&surface);
 
 	xdg_surface.quick_assign(
 		move |xdg_surface: Main<XdgSurface>, event: xdg_surface::Event, _dd: DispatchData| {
 			use xdg_surface::Event::*;
 
-			match event {
-				Configure { serial } => {
-					if let Some(surface) = weak_surface.upgrade() {
-						if !surface.initialized.swap(true, Ordering::Relaxed) {
-							let wl_egl_surface =
-								wayland_egl::WlEglSurface::new(&surface.handle, width, height);
+			if let Configure { serial } = event {
+				if let Some(surface) = weak_surface.upgrade() {
+					if !surface.initialized.replace(true) {
+						let wl_egl_surface =
+							wayland_egl::WlEglSurface::new(&surface.handle, width, height);
 
-							let egl_surface = unsafe {
-								egl.create_window_surface(
-									egl_display,
-									egl_config,
-									wl_egl_surface.ptr() as egl::NativeWindowType,
-									None,
-								)
-								.expect("unable to create an EGL surface")
-							};
-
-							egl.make_current(
+						let egl_surface = unsafe {
+							egl.create_window_surface(
 								egl_display,
-								Some(egl_surface),
-								Some(egl_surface),
-								Some(egl_context),
+								egl_config,
+								wl_egl_surface.ptr() as egl::NativeWindowType,
+								None,
 							)
-							.expect("unable to bind the context");
+							.expect("unable to create an EGL surface")
+						};
 
-							render();
+						egl.make_current(
+							egl_display,
+							Some(egl_surface),
+							Some(egl_surface),
+							Some(egl_context),
+						)
+						.expect("unable to bind the context");
 
-							egl.swap_buffers(egl_display, egl_surface)
-								.expect("unable to post the surface content");
+						render();
 
-							xdg_surface.ack_configure(serial);
-						}
+						egl.swap_buffers(egl_display, egl_surface)
+							.expect("unable to post the surface content");
+
+						xdg_surface.ack_configure(serial);
 					}
 				}
-				_ => (),
 			}
 		},
 	);
@@ -204,9 +200,9 @@ fn main() {
 	}
 }
 
-const VERTEX: &'static [GLint; 8] = &[-1, -1, 1, -1, 1, 1, -1, 1];
+const VERTEX: &[GLint; 8] = &[-1, -1, 1, -1, 1, 1, -1, 1];
 
-const INDEXES: &'static [GLuint; 4] = &[0, 1, 2, 3];
+const INDEXES: &[GLuint; 4] = &[0, 1, 2, 3];
 
 const VERTEX_SHADER: &[u8] = b"#version 400
 in vec2 position;
@@ -229,7 +225,7 @@ fn render() {
 		let vertex_shader = gl::CreateShader(gl::VERTEX_SHADER);
 		check_gl_errors();
 		let src = CStr::from_bytes_with_nul_unchecked(VERTEX_SHADER).as_ptr();
-		gl::ShaderSource(vertex_shader, 1, (&[src]).as_ptr(), ptr::null());
+		gl::ShaderSource(vertex_shader, 1, [src].as_ptr(), ptr::null());
 		check_gl_errors();
 		gl::CompileShader(vertex_shader);
 		check_shader_status(vertex_shader);
@@ -237,7 +233,7 @@ fn render() {
 		let fragment_shader = gl::CreateShader(gl::FRAGMENT_SHADER);
 		check_gl_errors();
 		let src = CStr::from_bytes_with_nul_unchecked(FRAGMENT_SHADER).as_ptr();
-		gl::ShaderSource(fragment_shader, 1, (&[src]).as_ptr(), ptr::null());
+		gl::ShaderSource(fragment_shader, 1, [src].as_ptr(), ptr::null());
 		check_gl_errors();
 		gl::CompileShader(fragment_shader);
 		check_shader_status(fragment_shader);
@@ -273,7 +269,7 @@ fn render() {
 		check_gl_errors();
 		gl::EnableVertexAttribArray(0);
 		check_gl_errors();
-		gl::VertexAttribPointer(0, 2, gl::INT, gl::FALSE as GLboolean, 0, 0 as *const GLvoid);
+		gl::VertexAttribPointer(0, 2, gl::INT, gl::FALSE as GLboolean, 0, ptr::null());
 		check_gl_errors();
 
 		let mut indexes = 0;
@@ -324,18 +320,14 @@ unsafe fn check_shader_status(shader: GLuint) {
 	gl::GetShaderiv(shader, gl::COMPILE_STATUS, &mut status);
 	if status != (gl::TRUE as GLint) {
 		let mut len = 0;
-		gl::GetProgramiv(shader, gl::INFO_LOG_LENGTH, &mut len);
+		gl::GetShaderiv(shader, gl::INFO_LOG_LENGTH, &mut len);
 		if len > 0 {
-			let mut buf = Vec::with_capacity(len as usize);
-			buf.set_len((len as usize) - 1); // subtract 1 to skip the trailing null character
-			gl::GetProgramInfoLog(
-				shader,
-				len,
-				ptr::null_mut(),
-				buf.as_mut_ptr() as *mut GLchar,
-			);
+			let mut buf = vec![0u8; len as usize];
+			let mut written = 0;
+			gl::GetShaderInfoLog(shader, len, &mut written, buf.as_mut_ptr() as *mut GLchar);
+			buf.truncate(written as usize);
 
-			let log = String::from_utf8(buf).unwrap();
+			let log = String::from_utf8_lossy(&buf);
 			eprintln!("shader compilation log:\n{}", log);
 		}
 

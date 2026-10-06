@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Changed
+- Declare Rust 1.85 as the minimum supported Rust version; retain edition 2021.
+- Refresh CI to check formatting, Clippy, doctests, EGL feature levels, and the MSRV.
+- The raw `api::EGL1_0::eglGetProcAddress` method now returns
+  `Option<extern "system" fn()>` to correctly represent null pointers. Custom API
+  implementations must update their signature; `Instance::get_proc_address` is unchanged.
+### Fixed
+- Return `BadDisplay` instead of panicking when `eglGetPlatformDisplay` returns
+  `EGL_NO_DISPLAY` without an EGL error (PR #36).
+- Make dynamic API version casts use explicitly compatible layouts.
+- Restore builds with lower EGL-version features and default-feature doctests.
+- Remove inactive Android type declarations; retain the existing opaque native handles.
+- Fix uninitialized shader-log buffers and use shader-specific OpenGL queries in examples.
+- Correct documentation about stable static instances and unsafe library loading.
+
 ## [6.0.0]
 ### Changed
 - `copy_buffers` is now unsafe.
